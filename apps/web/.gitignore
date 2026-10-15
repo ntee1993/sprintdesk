@@ -38,5 +38,7 @@ __screenshots__/
 # Vite
 *.timestamp-*-*.mjs
 
-.env.local
-.env.*.local
+# Environment files (keep safe examples trackable)
+.env
+.env.*
+!.env.example
