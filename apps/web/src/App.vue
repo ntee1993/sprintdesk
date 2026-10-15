@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { Task } from './types/task'
+import TaskCard from './components/TaskCard.vue'
 
 const tasks = ref<Task[]>([
   { id: 1, title: 'Create SprintDesk', status: 'todo', priority: 'high' },
@@ -19,19 +20,18 @@ function addTask() {
     priority: 'high',
   })
 }
+
+function deleteTask(taskId: number) {
+  const result = tasks.value.filter((task) => task.id !== taskId)
+  tasks.value = result
+}
 </script>
 
 <template>
   <main>
     <h1>SprintDesk — Project Management</h1>
 
-    <div v-for="task in tasks" :key="task.id">
-      <p>
-        {{ task.title }} - {{ task.status }} - {{ task.priority }} -
-        {{ task.assignee ?? 'Unassigned' }}
-      </p>
-    </div>
-
-    <button @click="addTask">Add Task</button>
+    <TaskCard v-for="task in tasks" :key="task.id" :task="task" @delete="deleteTask" />
+    <div><button @click="addTask">Add Task</button></div>
   </main>
 </template>
