@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import type { Task } from './types/task'
 import TaskCard from './components/TaskCard.vue'
+import TaskSummary from './components/TaskSummary.vue'
 
 const tasks = ref<Task[]>([
   { id: 1, title: 'Create SprintDesk', status: 'todo', priority: 'high' },
@@ -31,6 +32,7 @@ function deleteTask(taskId: number) {
   <main>
     <h1>SprintDesk — Project Management</h1>
 
+    <TaskSummary :tasks="tasks" />
     <TaskCard v-for="task in tasks" :key="task.id" :task="task" @delete="deleteTask" />
     <div><button @click="addTask">Add Task</button></div>
   </main>
