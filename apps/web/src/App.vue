@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { Task } from './types/task'
+import { ref, watch } from 'vue'
+import type { Task, TaskPriority, TaskStatus } from './types/task'
 import TaskCard from './components/TaskCard.vue'
 import TaskSummary from './components/TaskSummary.vue'
 
@@ -10,16 +10,45 @@ const tasks = ref<Task[]>([
   { id: 3, title: 'Prepare for interview', status: 'done', priority: 'urgent' },
 ])
 
+const inputTitle = ref<Task['title']>('')
+
+const selectedStatus = ref<TaskStatus>('todo')
+const selectedPriority = ref<TaskPriority>('high')
+
+const titleErrorMsg = 'Task title is required.'
+const titleError = ref<typeof titleErrorMsg | ''>('')
+
+watch(inputTitle, (newValue) => {
+  if (newValue.trim().length !== 0) {
+    titleError.value = ''
+  }
+})
+
 function addTask() {
-  const taskId = tasks.value.map((task) => task.id)
-  const maxId = taskId.length > 0 ? Math.max(...taskId) : 0
-  const newId = maxId + 1
+  const title = inputTitle.value.trim()
+
+  if (title.length === 0) {
+    titleError.value = titleErrorMsg
+    return
+  }
+
+  const taskIds = tasks.value.map((task) => task.id)
+  const maxId = taskIds.length > 0 ? Math.max(...taskIds) : 0
+  const id = maxId + 1
+  const status = selectedStatus.value
+  const priority = selectedPriority.value
+
   tasks.value.push({
-    id: newId,
-    title: 'Learn NestJS',
-    status: 'todo',
-    priority: 'high',
+    id,
+    title,
+    status,
+    priority,
   })
+
+  titleError.value = ''
+  inputTitle.value = ''
+  selectedStatus.value = 'todo'
+  selectedPriority.value = 'high'
 }
 
 function deleteTask(taskId: number) {
@@ -34,6 +63,38 @@ function deleteTask(taskId: number) {
 
     <TaskSummary :tasks="tasks" />
     <TaskCard v-for="task in tasks" :key="task.id" :task="task" @delete="deleteTask" />
-    <div><button @click="addTask">Add Task</button></div>
+
+    <h2>Create New Task</h2>
+    <form @submit.prevent="addTask">
+      <label for="task-title">Task Title:</label>
+      <input id="task-title" type="text" v-model="inputTitle" />
+      <p v-if="titleError">{{ titleError }}</p>
+
+      <label for="task-status">Status:</label>
+      <select id="task-status" v-model="selectedStatus">
+        <option value="todo">To Do</option>
+        <option value="in_progress">In Progress</option>
+        <option value="done">Done</option>
+      </select>
+
+      <label for="task-priority">Priority:</label>
+      <select id="task-priority" v-model="selectedPriority">
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="urgent">Urgent</option>
+      </select>
+
+      <button type="submit">Add Task</button>
+    </form>
   </main>
 </template>
+
+<style scoped>
+form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+</style>
