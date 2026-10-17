@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Task, TaskPriority, TaskStatus } from './types/task'
 import TaskCard from './components/TaskCard.vue'
 import TaskSummary from './components/TaskSummary.vue'
@@ -23,6 +23,13 @@ watch(inputTitle, (newValue) => {
     titleError.value = ''
   }
 })
+
+const selectedFilter = ref<TaskStatus | 'all'>('all')
+const filteredTasks = computed(() =>
+  selectedFilter.value === 'all'
+    ? tasks.value
+    : tasks.value.filter((task) => task.status === selectedFilter.value),
+)
 
 function addTask() {
   const title = inputTitle.value.trim()
@@ -62,7 +69,16 @@ function deleteTask(taskId: number) {
     <h1>SprintDesk — Project Management</h1>
 
     <TaskSummary :tasks="tasks" />
-    <TaskCard v-for="task in tasks" :key="task.id" :task="task" @delete="deleteTask" />
+
+    <label for="task-filter">Filter Tasks:</label>
+    <select id="task-filter" v-model="selectedFilter">
+      <option value="all">All Statuses</option>
+      <option value="todo">To Do</option>
+      <option value="in_progress">In Progress</option>
+      <option value="done">Done</option>
+    </select>
+    <TaskCard v-for="task in filteredTasks" :key="task.id" :task="task" @delete="deleteTask" />
+    <p v-if="filteredTasks.length === 0">No tasks found for the selected status.</p>
 
     <h2>Create New Task</h2>
     <form @submit.prevent="addTask">
