@@ -83,8 +83,16 @@ function deleteTask(taskId: number) {
     <h2>Create New Task</h2>
     <form @submit.prevent="addTask">
       <label for="task-title">Task Title:</label>
-      <input id="task-title" type="text" v-model="inputTitle" />
-      <p v-if="titleError">{{ titleError }}</p>
+      <input
+        id="task-title"
+        type="text"
+        v-model="inputTitle"
+        :aria-invalid="Boolean(titleError)"
+        :aria-describedby="titleError ? 'task-title-error' : undefined"
+      />
+      <p v-if="titleError" id="task-title-error" role="alert">
+        {{ titleError }}
+      </p>
 
       <label for="task-status">Status:</label>
       <select id="task-status" v-model="selectedStatus">
