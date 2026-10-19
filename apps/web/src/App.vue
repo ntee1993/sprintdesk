@@ -24,12 +24,18 @@ watch(inputTitle, (newValue) => {
   }
 })
 
+const searchQuery = ref('')
 const selectedFilter = ref<TaskStatus | 'all'>('all')
-const filteredTasks = computed(() =>
-  selectedFilter.value === 'all'
-    ? tasks.value
-    : tasks.value.filter((task) => task.status === selectedFilter.value),
-)
+const filteredTasks = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  const searchedTasks = tasks.value.filter((task) => task.title.toLowerCase().includes(query))
+
+  if (selectedFilter.value === 'all') {
+    return searchedTasks
+  }
+
+  return searchedTasks.filter((task) => task.status === selectedFilter.value)
+})
 
 function addTask() {
   const title = inputTitle.value.trim()
@@ -70,15 +76,23 @@ function deleteTask(taskId: number) {
 
     <TaskSummary :tasks="tasks" />
 
-    <label for="task-filter">Filter Tasks:</label>
-    <select id="task-filter" v-model="selectedFilter">
-      <option value="all">All Statuses</option>
-      <option value="todo">To Do</option>
-      <option value="in_progress">In Progress</option>
-      <option value="done">Done</option>
-    </select>
+    <div>
+      <label for="task-search">Search Tasks:</label>
+      <input v-model="searchQuery" id="task-search" type="text" placeholder="Search by title..." />
+    </div>
+
+    <div>
+      <label for="task-filter">Filter Tasks:</label>
+      <select id="task-filter" v-model="selectedFilter">
+        <option value="all">All Statuses</option>
+        <option value="todo">To Do</option>
+        <option value="in_progress">In Progress</option>
+        <option value="done">Done</option>
+      </select>
+    </div>
+
+    <p v-if="filteredTasks.length === 0">No tasks found for the selected filters.</p>
     <TaskCard v-for="task in filteredTasks" :key="task.id" :task="task" @delete="deleteTask" />
-    <p v-if="filteredTasks.length === 0">No tasks found for the selected status.</p>
 
     <h2>Create New Task</h2>
     <form @submit.prevent="addTask">
