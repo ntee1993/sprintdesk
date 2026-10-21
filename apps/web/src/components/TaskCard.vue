@@ -6,6 +6,7 @@
     </p>
     <p v-if="expanded">Additional details are visible.</p>
 
+    <button type="button" @click="handleEdit">Edit</button>
     <button type="button" @click="handleDelete">Delete</button>
     <button type="button" @click="expandedToggle" :aria-expanded="expanded">
       {{ expanded ? 'Collapse' : 'Expand' }}
@@ -23,11 +24,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   delete: [taskId: number]
+  edit: [taskId: number]
 }>()
 
 function handleDelete() {
   const taskId = props.task.id
   emit('delete', taskId)
+}
+
+function handleEdit() {
+  const taskId = props.task.id
+  emit('edit', taskId)
 }
 
 const expanded = ref(false)

@@ -9,3 +9,5 @@ export type Task = {
   assignee?: string
   dueDate?: string
 }
+
+export type TaskChanges = Pick<Task, 'title' | 'status' | 'priority'>
