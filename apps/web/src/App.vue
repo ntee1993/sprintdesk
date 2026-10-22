@@ -4,6 +4,7 @@ import type { Task, TaskPriority, TaskStatus, TaskChanges } from './types/task'
 import TaskCard from './components/TaskCard.vue'
 import TaskSummary from './components/TaskSummary.vue'
 import EditTaskModal from './components/EditTaskModal.vue'
+import { useTaskFilters } from './composables/useTaskFilters'
 
 type TaskView = 'list' | 'kanban'
 const selectedView = ref<TaskView>('list')
@@ -28,18 +29,8 @@ watch(inputTitle, (newValue) => {
   }
 })
 
-const searchQuery = ref('')
-const selectedFilter = ref<TaskStatus | 'all'>('all')
-const filteredTasks = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-  const searchedTasks = tasks.value.filter((task) => task.title.toLowerCase().includes(query))
-
-  if (selectedFilter.value === 'all') {
-    return searchedTasks
-  }
-
-  return searchedTasks.filter((task) => task.status === selectedFilter.value)
-})
+const { searchQuery, selectedFilter, filteredTasks, resetFilters, hasActiveFilters } =
+  useTaskFilters(tasks)
 
 const todoTasks = computed(() => tasks.value.filter((task) => task.status === 'todo'))
 const inProgressTasks = computed(() => tasks.value.filter((task) => task.status === 'in_progress'))
@@ -158,6 +149,10 @@ function updateTask(taskId: Task['id'], changes: TaskChanges) {
           <option value="done">Done</option>
         </select>
       </div>
+
+      <button type="button" @click="resetFilters" :disabled="!hasActiveFilters">
+        Reset Filters
+      </button>
 
       <p v-if="filteredTasks.length === 0">No tasks found for the selected filters.</p>
       <TaskCard
