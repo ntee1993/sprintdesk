@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Task } from '../types/task'
+import type { Task } from '@/types/task'
 import { ref } from 'vue'
 
 const props = defineProps<{

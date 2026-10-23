@@ -11,8 +11,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import type { Task } from '../types/task'
+import { computed } from 'vue'
+import type { Task } from '@/types/task'
 
 const props = defineProps<{
   tasks: Task[]
@@ -25,8 +25,4 @@ const inProgressCount = computed(
 )
 const completedCount = computed(() => props.tasks.filter((task) => task.status === 'done').length)
 const urgentCount = computed(() => props.tasks.filter((task) => task.priority === 'urgent').length)
-
-watch(completedCount, (newValue, oldValue) => {
-  console.log(`Completed task count changed: ${oldValue} → ${newValue}`)
-})
 </script>

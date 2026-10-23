@@ -35,7 +35,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { Task, TaskChanges } from '../types/task'
+import type { Task, TaskChanges } from '@/types/task'
 import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{

@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import type { Ref } from 'vue'
-import type { Task, TaskStatus } from '../types/task'
+import type { Task, TaskStatus } from '@/types/task'
 
 export function useTaskFilters(tasks: Ref<Task[]>) {
   const searchQuery = ref('')
