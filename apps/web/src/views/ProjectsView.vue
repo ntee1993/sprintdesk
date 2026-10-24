@@ -1,4 +1,6 @@
 <template>
-  <h1>Projects</h1>
-  <p>Welcome to Projects.</p>
+  <main>
+    <h1>Projects</h1>
+    <p>Welcome to Projects.</p>
+  </main>
 </template>
