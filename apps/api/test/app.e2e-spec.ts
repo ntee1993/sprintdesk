@@ -30,6 +30,26 @@ describe('AppController (e2e)', () => {
       .expect({ status: 'ok' });
   });
 
+  it('/tasks (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/tasks')
+      .expect(200)
+      .expect([
+        {
+          id: 1,
+          title: 'Learn NestJS',
+          status: 'todo',
+          priority: 'high',
+        },
+        {
+          id: 2,
+          title: 'Build Tasks API',
+          status: 'in_progress',
+          priority: 'urgent',
+        },
+      ]);
+  });
+
   afterEach(async () => {
     await app.close();
   });
