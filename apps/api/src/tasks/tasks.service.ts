@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 
 export type CreateTaskInput = {
   title: string;
@@ -25,6 +25,14 @@ export class TasksService {
 
   findAll() {
     return this.tasks;
+  }
+
+  findOne(id: number) {
+    const result = this.tasks.find((task) => task['id'] === id);
+    if (result === undefined) {
+      throw new NotFoundException('Task not found');
+    }
+    return result;
   }
 
   create(task: CreateTaskInput) {

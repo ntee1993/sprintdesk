@@ -5,6 +5,8 @@ import {
   Body,
   UsePipes,
   ValidationPipe,
+  Param,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service.js';
 import { CreateTaskDto } from './dto/create-task.dto.js';
@@ -16,6 +18,11 @@ export class TasksController {
   @Get()
   findAll() {
     return this.tasksService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.tasksService.findOne(id);
   }
 
   @Post()

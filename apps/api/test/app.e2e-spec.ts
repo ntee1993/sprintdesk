@@ -50,6 +50,33 @@ describe('App (e2e)', () => {
       ]);
   });
 
+  it('returns a task when the ID exists', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/tasks/1')
+      .expect(200);
+    expect(response.body).toEqual({
+      id: 1,
+      title: 'Learn NestJS',
+      status: 'todo',
+      priority: 'high',
+    });
+  });
+
+  it('returns 404 when the task does not exist', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/tasks/999')
+      .expect(404);
+    expect(response.body.statusCode).toBe(404);
+    expect(response.body.message).toBe('Task not found');
+  });
+
+  it('returns 400 when the task ID is invalid', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/tasks/hello')
+      .expect(400);
+    expect(response.body.statusCode).toBe(400);
+  });
+
   it('/tasks (POST)', async () => {
     const input = {
       title: 'Learn Dependency Injection',

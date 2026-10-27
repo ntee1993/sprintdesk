@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { TasksService } from './tasks.service.js';
 
 describe('TasksService', () => {
@@ -18,6 +19,23 @@ describe('TasksService', () => {
         status: 'todo',
         priority: 'high',
       });
+    });
+  });
+
+  describe('findOne', () => {
+    it('should return the task with ID 1', () => {
+      const task = {
+        id: 1,
+        title: 'Learn NestJS',
+        status: 'todo',
+        priority: 'high',
+      };
+      const result = tasksService.findOne(task.id);
+
+      expect(result).toEqual(task);
+    });
+    it('should throw NotFoundException when task is not found', () => {
+      expect(() => tasksService.findOne(999)).toThrow(NotFoundException);
     });
   });
 

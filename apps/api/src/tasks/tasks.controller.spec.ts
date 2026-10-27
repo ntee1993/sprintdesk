@@ -7,6 +7,7 @@ describe('TasksController', () => {
   let tasksController: TasksController;
   const tasksService = {
     findAll: vi.fn(),
+    findOne: vi.fn(),
     create: vi.fn(),
   };
 
@@ -32,7 +33,23 @@ describe('TasksController', () => {
       expect(tasksService.findAll).toHaveBeenCalledOnce();
       expect(result).toEqual(tasks);
     });
+  });
 
+  describe('findOne', () => {
+    it('should return the task with ID 1', () => {
+      const tasks = {
+        id: 1,
+        title: 'Learn NestJS',
+        status: 'todo',
+        priority: 'high',
+      };
+      tasksService.findOne.mockReturnValue(tasks);
+
+      const result = tasksController.findOne(1);
+
+      expect(tasksService.findOne).toHaveBeenCalledExactlyOnceWith(1);
+      expect(result).toEqual(tasks);
+    });
   });
 
   describe('create', () => {
