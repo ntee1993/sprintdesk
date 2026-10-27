@@ -1,22 +1,18 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Post, Body } from '@nestjs/common';
+import { TasksService } from './tasks.service.js';
+import type { CreateTaskInput } from './tasks.service.js';
 
 @Controller('tasks')
 export class TasksController {
+  constructor(private readonly tasksService: TasksService) {}
+
   @Get()
   findAll() {
-    return [
-      {
-        id: 1,
-        title: 'Learn NestJS',
-        status: 'todo',
-        priority: 'high',
-      },
-      {
-        id: 2,
-        title: 'Build Tasks API',
-        status: 'in_progress',
-        priority: 'urgent',
-      },
-    ];
+    return this.tasksService.findAll();
+  }
+
+  @Post()
+  create(@Body() body: CreateTaskInput) {
+    return this.tasksService.create(body);
   }
 }

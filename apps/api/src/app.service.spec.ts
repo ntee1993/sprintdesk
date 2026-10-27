@@ -1,6 +1,6 @@
 import { AppService } from './app.service.js';
 
-describe('appService', () => {
+describe('AppService', () => {
   const appService = new AppService();
 
   describe('health', () => {

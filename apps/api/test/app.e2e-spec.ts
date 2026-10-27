@@ -4,7 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 
-describe('AppController (e2e)', () => {
+describe('App (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
@@ -48,6 +48,25 @@ describe('AppController (e2e)', () => {
           priority: 'urgent',
         },
       ]);
+  });
+
+  it('/tasks (POST)', async () => {
+    const input = {
+      title: 'Learn Dependency Injection',
+      status: 'todo',
+      priority: 'high',
+    };
+    const postResponse = await request(app.getHttpServer())
+      .post('/tasks')
+      .send(input)
+      .expect(201);
+    expect(postResponse.body).toEqual({ id: 3, ...input });
+
+    const getResponse = await request(app.getHttpServer())
+      .get('/tasks')
+      .expect(200);
+    expect(getResponse.body).toHaveLength(3);
+    expect(getResponse.body).toContainEqual({ id: 3, ...input });
   });
 
   afterEach(async () => {
