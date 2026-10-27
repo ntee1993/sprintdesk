@@ -33,22 +33,18 @@ describe('TasksView', () => {
     const taskStore = useTaskStore(pinia)
     const initialCount = taskStore.tasks.length
 
-    await wrapper.get('#task-title').setValue('Write Unit Tests')
+    await wrapper.get('#task-title').setValue('  Write Unit Tests  ')
     await wrapper.get('#task-status').setValue('in_progress')
     await wrapper.get('#task-priority').setValue('urgent')
     await wrapper.get('form').trigger('submit')
 
     expect(taskStore.tasks.length).toBe(initialCount + 1)
 
-    const newTask = taskStore.tasks.at(-1)
-
-    if (!newTask) {
-      throw new Error('New task was not created')
-    }
-
-    expect(newTask.title).toBe('Write Unit Tests')
-    expect(newTask.status).toBe('in_progress')
-    expect(newTask.priority).toBe('urgent')
+    expect(taskStore.tasks.at(-1)).toMatchObject({
+      title: 'Write Unit Tests',
+      status: 'in_progress',
+      priority: 'urgent',
+    })
 
     const titleInput = wrapper.get('#task-title').element as HTMLInputElement
     expect(titleInput.value).toBe('')

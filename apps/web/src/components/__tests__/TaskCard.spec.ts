@@ -11,7 +11,7 @@ const task = {
 }
 
 describe('TaskCard', () => {
-  it('TaskCard contains task title', () => {
+  it('displays the task title', () => {
     const wrapper = mount(TaskCard, {
       props: {
         task,
@@ -21,7 +21,7 @@ describe('TaskCard', () => {
     expect(wrapper.text()).toContain(task.title)
   })
 
-  it('edit button sends the right event and task id', async () => {
+  it('emits the task ID when Edit is clicked', async () => {
     const wrapper = mount(TaskCard, {
       props: {
         task,
@@ -36,10 +36,10 @@ describe('TaskCard', () => {
     }
 
     await editButton.trigger('click')
-    expect(wrapper.emitted('edit')).toEqual([[10]])
+    expect(wrapper.emitted('edit')).toEqual([[task.id]])
   })
 
-  it('delete button sends the right event and task id', async () => {
+  it('emits the task ID when Delete is clicked', async () => {
     const wrapper = mount(TaskCard, {
       props: {
         task,
@@ -54,6 +54,22 @@ describe('TaskCard', () => {
     }
 
     await deleteButton.trigger('click')
-    expect(wrapper.emitted('delete')).toEqual([[10]])
+    expect(wrapper.emitted('delete')).toEqual([[task.id]])
+  })
+
+  it('shows and hides details when expanded and collapsed', async () => {
+    const wrapper = mount(TaskCard, { props: { task } })
+    const button = wrapper.get('[aria-expanded]')
+
+    expect(button.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('Additional details are visible.')
+
+    await button.trigger('click')
+    expect(button.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.text()).toContain('Additional details are visible.')
+
+    await button.trigger('click')
+    expect(button.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).not.toContain('Additional details are visible.')
   })
 })
