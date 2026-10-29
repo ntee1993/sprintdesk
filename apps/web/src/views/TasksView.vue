@@ -8,7 +8,8 @@
       :task="selectedTask"
       :key="selectedTask.id"
     />
-
+    <p v-if="isLoading" role="status">Loading tasks...</p>
+    <p v-if="fetchError" role="alert">{{ fetchError }}</p>
     <TaskSummary :tasks="tasks" />
 
     <button @click="selectedView = 'list'" type="button" :aria-pressed="selectedView === 'list'">
@@ -131,18 +132,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import type { Task, TaskPriority, TaskStatus, TaskChanges } from '@/types/task'
 import TaskCard from '@/components/TaskCard.vue'
 import TaskSummary from '@/components/TaskSummary.vue'
 import EditTaskModal from '@/components/EditTaskModal.vue'
 import { useTaskFilters } from '@/composables/useTaskFilters.ts'
-
 import { useTaskStore } from '@/stores/task.ts'
 import { storeToRefs } from 'pinia'
 
 const taskStore = useTaskStore()
-const { tasks } = storeToRefs(taskStore)
+const { tasks, isLoading, fetchError } = storeToRefs(taskStore)
+
+onMounted(() => {
+  void taskStore.fetchTasks()
+})
 
 type TaskView = 'list' | 'kanban'
 const selectedView = ref<TaskView>('list')

@@ -9,6 +9,26 @@ export const useTaskStore = defineStore('tasks', () => {
     { id: 3, title: 'Prepare for interview', status: 'done', priority: 'urgent' },
   ])
 
+  const isLoading = ref(false)
+  const fetchError = ref<string | null>(null)
+
+  async function fetchTasks() {
+    isLoading.value = true
+    fetchError.value = null
+    try {
+      const response = await fetch('http://localhost:3000/tasks')
+      if (!response.ok) {
+        throw new Error('Failed to fetch tasks')
+      }
+      const data = (await response.json()) as Task[]
+      tasks.value = data
+    } catch {
+      fetchError.value = 'Failed to load tasks'
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   const addTask = (newTask: Pick<Task, 'title' | 'status' | 'priority'>) => {
     const taskIds = tasks.value.map((task) => task.id)
     const maxId = taskIds.length > 0 ? Math.max(...taskIds) : 0
@@ -40,5 +60,5 @@ export const useTaskStore = defineStore('tasks', () => {
     tasks.value = updatedTask
   }
 
-  return { tasks, addTask, deleteTask, updateTask }
+  return { fetchTasks, isLoading, fetchError, tasks, addTask, deleteTask, updateTask }
 })
