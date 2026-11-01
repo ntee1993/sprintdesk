@@ -1,50 +1,51 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 export type CreateTaskInput = {
   title: string;
   status: string;
   priority: string;
+  projectId: number;
 };
 
 @Injectable()
 export class TasksService {
+  constructor(private readonly prisma: PrismaService) {}
+
   private tasks = [
     {
       id: 1,
       title: 'Learn NestJS',
       status: 'todo',
       priority: 'high',
+      projectId: 1,
     },
     {
       id: 2,
       title: 'Build Tasks API',
       status: 'in_progress',
       priority: 'urgent',
+      projectId: 2,
     },
   ];
 
   findAll() {
-    return this.tasks;
+    return this.prisma.task.findMany();
   }
 
-  findOne(id: number) {
-    const result = this.tasks.find((task) => task['id'] === id);
-    if (result === undefined) {
+  async findOne(id: number) {
+    const task = await this.prisma.task.findUnique({
+      where: { id },
+    });
+    if (task === null) {
       throw new NotFoundException('Task not found');
     }
-    return result;
+    return task;
   }
 
   create(task: CreateTaskInput) {
-    const ids = this.tasks.map((task) => task['id']);
-    const newId = ids.length !== 0 ? Math.max(...ids) + 1 : 1;
-    const newTask = {
-      id: newId,
-      ...task,
-    };
-
-    this.tasks.push(newTask);
-
-    return newTask;
+    return this.prisma.task.create({
+      data: task,
+    });
   }
 }

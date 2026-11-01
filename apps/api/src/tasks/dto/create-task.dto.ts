@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsString } from 'class-validator';
+import { IsIn, IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
 
 export class CreateTaskDto {
   @IsString()
@@ -10,4 +10,8 @@ export class CreateTaskDto {
 
   @IsIn(['low', 'medium', 'high', 'urgent'])
   priority!: string;
+
+  @IsInt()
+  @Min(1)
+  projectId!: number;
 }

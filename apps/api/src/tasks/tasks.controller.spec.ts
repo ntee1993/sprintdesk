@@ -24,7 +24,13 @@ describe('TasksController', () => {
   describe('findAll', () => {
     it('should return the tasks from the service', () => {
       const tasks = [
-        { id: 1, title: 'Learn NestJS', status: 'todo', priority: 'high' },
+        {
+          id: 1,
+          title: 'Learn NestJS',
+          status: 'todo',
+          priority: 'high',
+          projectId: 1,
+        },
       ];
       tasksService.findAll.mockReturnValue(tasks);
 
@@ -42,6 +48,7 @@ describe('TasksController', () => {
         title: 'Learn NestJS',
         status: 'todo',
         priority: 'high',
+        projectId: 1,
       };
       tasksService.findOne.mockReturnValue(tasks);
 
@@ -58,6 +65,7 @@ describe('TasksController', () => {
         title: 'Learn Dependency Injection',
         status: 'todo',
         priority: 'high',
+        projectId: 1,
       };
       const createdTask = { id: 3, ...input };
       tasksService.create.mockReturnValue(createdTask);

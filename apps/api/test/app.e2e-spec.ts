@@ -1,134 +1,239 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types.js';
-import { AppModule } from './../src/app.module.js';
+import type { App } from 'supertest/types.js';
+
+import { AppModule } from '../src/app.module.js';
+import { PrismaService } from '../src/prisma/prisma.service.js';
+
+// -----------------------------------------------------------------------------
+// Test Fixtures
+// -----------------------------------------------------------------------------
+
+const mockTasks = [
+  {
+    id: 1,
+    title: 'Learn NestJS',
+    status: 'todo',
+    priority: 'high',
+    projectId: 1,
+  },
+  {
+    id: 2,
+    title: 'Build Tasks API',
+    status: 'in_progress',
+    priority: 'urgent',
+    projectId: 2,
+  },
+];
+
+const validTaskInput = {
+  title: 'Learn Dependency Injection',
+  status: 'todo',
+  priority: 'high',
+  projectId: 1,
+};
+
+// -----------------------------------------------------------------------------
+// E2E Tests
+// -----------------------------------------------------------------------------
 
 describe('App (e2e)', () => {
   let app: INestApplication<App>;
+  let createMock: ReturnType<typeof vi.fn>;
+
+  // ---------------------------------------------------------------------------
+  // Setup & Teardown
+  // ---------------------------------------------------------------------------
 
   beforeEach(async () => {
+    createMock = vi.fn().mockImplementation(({ data }) =>
+      Promise.resolve({
+        id: 3,
+        ...data,
+      }),
+    );
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue({
+        task: {
+          findMany: vi.fn().mockResolvedValue(mockTasks),
+
+          findUnique: vi
+            .fn()
+            .mockImplementation(({ where }) =>
+              Promise.resolve(
+                mockTasks.find((task) => task.id === where.id) ?? null,
+              ),
+            ),
+
+          create: createMock,
+        },
+      })
+      .compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  afterEach(async () => {
+    await app.close();
   });
 
-  it('/health (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/health')
-      .expect(200)
-      .expect({ status: 'ok' });
-  });
+  // ---------------------------------------------------------------------------
+  // App Routes
+  // ---------------------------------------------------------------------------
 
-  it('/tasks (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/tasks')
-      .expect(200)
-      .expect([
-        {
-          id: 1,
-          title: 'Learn NestJS',
-          status: 'todo',
-          priority: 'high',
-        },
-        {
-          id: 2,
-          title: 'Build Tasks API',
-          status: 'in_progress',
-          priority: 'urgent',
-        },
-      ]);
-  });
+  describe('App Routes', () => {
+    it('GET / returns Hello World', () => {
+      return request(app.getHttpServer())
+        .get('/')
+        .expect(200)
+        .expect('Hello World!');
+    });
 
-  it('returns a task when the ID exists', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/tasks/1')
-      .expect(200);
-    expect(response.body).toEqual({
-      id: 1,
-      title: 'Learn NestJS',
-      status: 'todo',
-      priority: 'high',
+    it('GET /health returns healthy status', () => {
+      return request(app.getHttpServer())
+        .get('/health')
+        .expect(200)
+        .expect({ status: 'ok' });
     });
   });
 
-  it('returns 404 when the task does not exist', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/tasks/999')
-      .expect(404);
-    expect(response.body.statusCode).toBe(404);
-    expect(response.body.message).toBe('Task not found');
+  // ---------------------------------------------------------------------------
+  // GET /tasks
+  // ---------------------------------------------------------------------------
+
+  describe('GET /tasks', () => {
+    it('returns all tasks', () => {
+      return request(app.getHttpServer())
+        .get('/tasks')
+        .expect(200)
+        .expect(mockTasks);
+    });
   });
 
-  it('returns 400 when the task ID is invalid', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/tasks/hello')
-      .expect(400);
-    expect(response.body.statusCode).toBe(400);
+  // ---------------------------------------------------------------------------
+  // GET /tasks/:id
+  // ---------------------------------------------------------------------------
+
+  describe('GET /tasks/:id', () => {
+    it('returns the task when ID exists', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks/1')
+        .expect(200);
+
+      expect(response.body).toEqual(mockTasks[0]);
+    });
+
+    it('returns 404 when task does not exist', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks/999')
+        .expect(404);
+
+      expect(response.body.statusCode).toBe(404);
+      expect(response.body.message).toBe('Task not found');
+    });
+
+    it('returns 400 when ID is invalid', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks/hello')
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+    });
   });
 
-  it('/tasks (POST)', async () => {
-    const input = {
-      title: 'Learn Dependency Injection',
-      status: 'todo',
-      priority: 'high',
-    };
-    let response = await request(app.getHttpServer())
-      .post('/tasks')
-      .send(input)
-      .expect(201);
-    expect(response.body).toEqual({ id: 3, ...input });
+  // ---------------------------------------------------------------------------
+  // POST /tasks
+  // ---------------------------------------------------------------------------
 
-    response = await request(app.getHttpServer()).get('/tasks').expect(200);
-    expect(response.body).toHaveLength(3);
-    expect(response.body).toContainEqual({ id: 3, ...input });
-  });
+  describe('POST /tasks', () => {
+    it('creates a task and returns 201', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/tasks')
+        .send(validTaskInput)
+        .expect(201);
 
-  it('rejects invalid task data', async () => {
-    const invalidInput = {
-      title: 123,
-      status: 'flying',
-      priority: 'banana',
-    };
-    let response = await request(app.getHttpServer())
-      .post('/tasks')
-      .send(invalidInput)
-      .expect(400);
-    expect(response.body.message).toBeInstanceOf(Array);
-    expect(response.body.message.length).toBeGreaterThan(0);
+      expect(response.body).toEqual({
+        id: 3,
+        ...validTaskInput,
+      });
 
-    response = await request(app.getHttpServer()).get('/tasks').expect(200);
-    expect(response.body).toHaveLength(2);
-  });
+      expect(createMock).toHaveBeenCalledExactlyOnceWith({
+        data: validTaskInput,
+      });
+    });
 
-  it('rejects unexpected properties', async () => {
-    const unexpectedInput = {
-      title: 'Learn Validation',
-      status: 'todo',
-      priority: 'high',
-      userId: 999,
-    };
-    let response = await request(app.getHttpServer())
-      .post('/tasks')
-      .send(unexpectedInput)
-      .expect(400);
-    expect(response.body.message).toContain('property userId should not exist');
+    describe('Input Validation', () => {
+      it('rejects invalid task data', async () => {
+        const invalidInput = {
+          title: 123,
+          status: 'flying',
+          priority: 'banana',
+          projectId: 1,
+        };
 
-    response = await request(app.getHttpServer()).get('/tasks').expect(200);
-    expect(response.body).toHaveLength(2);
-  });
+        const response = await request(app.getHttpServer())
+          .post('/tasks')
+          .send(invalidInput)
+          .expect(400);
 
-  afterEach(async () => {
-    await app.close();
+        expect(response.body.message).toBeInstanceOf(Array);
+        expect(response.body.message.length).toBeGreaterThan(0);
+        expect(createMock).not.toHaveBeenCalled();
+      });
+
+      it('rejects unexpected properties', async () => {
+        const unexpectedInput = {
+          ...validTaskInput,
+          userId: 999,
+        };
+
+        const response = await request(app.getHttpServer())
+          .post('/tasks')
+          .send(unexpectedInput)
+          .expect(400);
+
+        expect(response.body.message).toContain(
+          'property userId should not exist',
+        );
+
+        expect(createMock).not.toHaveBeenCalled();
+      });
+
+      it('rejects missing projectId', async () => {
+        const input = {
+          title: 'Learn Validation',
+          status: 'todo',
+          priority: 'high',
+        };
+
+        await request(app.getHttpServer())
+          .post('/tasks')
+          .send(input)
+          .expect(400);
+
+        expect(createMock).not.toHaveBeenCalled();
+      });
+
+      it('rejects negative projectId', async () => {
+        const input = {
+          ...validTaskInput,
+          projectId: -1,
+        };
+
+        await request(app.getHttpServer())
+          .post('/tasks')
+          .send(input)
+          .expect(400);
+
+        expect(createMock).not.toHaveBeenCalled();
+      });
+    });
   });
 });
