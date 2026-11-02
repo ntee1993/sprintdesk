@@ -9,6 +9,8 @@ describe('TasksController', () => {
     findAll: vi.fn(),
     findOne: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -74,6 +76,42 @@ describe('TasksController', () => {
 
       expect(tasksService.create).toHaveBeenCalledExactlyOnceWith(input);
       expect(result).toEqual(createdTask);
+    });
+  });
+
+  describe('update', () => {
+    it('should update correctly', () => {
+      const updatedTask = {
+        id: 1,
+        title: 'Learn NestJS',
+        status: 'done',
+        priority: 'high',
+        projectId: 1,
+      };
+      tasksService.update.mockReturnValue(updatedTask);
+      const result = tasksController.update(1, { status: 'done' });
+
+      expect(tasksService.update).toHaveBeenCalledExactlyOnceWith(1, {
+        status: 'done',
+      });
+      expect(result).toEqual(updatedTask);
+    });
+  });
+
+  describe('remove', () => {
+    it('should delete correctly', () => {
+      const deletedTask = {
+        id: 1,
+        title: 'Learn NestJS',
+        status: 'done',
+        priority: 'high',
+        projectId: 1,
+      };
+      tasksService.remove.mockReturnValue(deletedTask);
+      const result = tasksController.remove(1);
+
+      expect(result).toEqual(deletedTask);
+      expect(tasksService.remove).toHaveBeenCalledExactlyOnceWith(1);
     });
   });
 });

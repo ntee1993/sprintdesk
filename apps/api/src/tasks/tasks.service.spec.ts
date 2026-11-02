@@ -2,12 +2,23 @@ import { NotFoundException } from '@nestjs/common';
 import { TasksService } from './tasks.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Prisma } from '../generated/prisma/client.js';
 
 describe('TasksService', () => {
   let tasksService: TasksService;
   let findManyMock: ReturnType<typeof vi.fn>;
   let findUniqueMock: ReturnType<typeof vi.fn>;
   let createMock: ReturnType<typeof vi.fn>;
+  let updateMock: ReturnType<typeof vi.fn>;
+  let deleteMock: ReturnType<typeof vi.fn>;
+
+  const prismaError = new Prisma.PrismaClientKnownRequestError(
+    'Record not found',
+    {
+      code: 'P2025',
+      clientVersion: '7.10.1',
+    },
+  );
 
   beforeEach(async () => {
     findManyMock = vi.fn().mockResolvedValue([
@@ -49,6 +60,22 @@ describe('TasksService', () => {
       projectId: 1,
     });
 
+    updateMock = vi.fn().mockResolvedValue({
+      id: 1,
+      title: 'Learn NestJS',
+      status: 'done',
+      priority: 'high',
+      projectId: 1,
+    });
+
+    deleteMock = vi.fn().mockResolvedValue({
+      id: 1,
+      title: 'Learn NestJS',
+      status: 'todo',
+      priority: 'high',
+      projectId: 1,
+    });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TasksService,
@@ -59,6 +86,8 @@ describe('TasksService', () => {
               findMany: findManyMock,
               findUnique: findUniqueMock,
               create: createMock,
+              update: updateMock,
+              delete: deleteMock,
             },
           },
         },
@@ -136,6 +165,67 @@ describe('TasksService', () => {
       expect(second.id).toBe(4);
 
       expect(createMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('update', () => {
+    it('should update status: "done" without changing other fields', async () => {
+      const result = await tasksService.update(1, { status: 'done' });
+
+      expect(result).toEqual({
+        id: 1,
+        title: 'Learn NestJS',
+        status: 'done',
+        priority: 'high',
+        projectId: 1,
+      });
+      expect(updateMock).toHaveBeenCalledExactlyOnceWith({
+        where: { id: 1 },
+        data: { status: 'done' },
+      });
+    });
+
+    it('should reject with P2025 error', async () => {
+      updateMock.mockRejectedValueOnce(prismaError);
+      await expect(
+        tasksService.update(999, { status: 'done' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject any error not P2025', async () => {
+      const databaseError = new Error('Database unavailable');
+      updateMock.mockRejectedValueOnce(databaseError);
+      await expect(
+        tasksService.update(999, { status: 'done' }),
+      ).rejects.toThrow(databaseError);
+    });
+  });
+
+  describe('delete', () => {
+    it('should delete the right task', async () => {
+      const result = await tasksService.remove(1);
+
+      expect(result).toEqual({
+        id: 1,
+        title: 'Learn NestJS',
+        status: 'todo',
+        priority: 'high',
+        projectId: 1,
+      });
+      expect(deleteMock).toHaveBeenCalledExactlyOnceWith({
+        where: { id: 1 },
+      });
+    });
+
+    it('should reject with P2025 error', async () => {
+      deleteMock.mockRejectedValueOnce(prismaError);
+      await expect(tasksService.remove(999)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject any error not P2025', async () => {
+      const databaseError = new Error('Database unavailable');
+      deleteMock.mockRejectedValueOnce(databaseError);
+      await expect(tasksService.remove(999)).rejects.toThrow(databaseError);
     });
   });
 });

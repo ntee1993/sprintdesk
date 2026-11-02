@@ -6,6 +6,7 @@ import type { App } from 'supertest/types.js';
 
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { Prisma } from '../src/generated/prisma/client.js';
 
 // -----------------------------------------------------------------------------
 // Test Fixtures
@@ -35,6 +36,14 @@ const validTaskInput = {
   projectId: 1,
 };
 
+const prismaError = new Prisma.PrismaClientKnownRequestError(
+  'Record not found',
+  {
+    code: 'P2025',
+    clientVersion: '7.10.1',
+  },
+);
+
 // -----------------------------------------------------------------------------
 // E2E Tests
 // -----------------------------------------------------------------------------
@@ -42,6 +51,8 @@ const validTaskInput = {
 describe('App (e2e)', () => {
   let app: INestApplication<App>;
   let createMock: ReturnType<typeof vi.fn>;
+  let updateMock: ReturnType<typeof vi.fn>;
+  let deleteMock: ReturnType<typeof vi.fn>;
 
   // ---------------------------------------------------------------------------
   // Setup & Teardown
@@ -54,6 +65,15 @@ describe('App (e2e)', () => {
         ...data,
       }),
     );
+
+    updateMock = vi.fn().mockResolvedValue({
+      ...mockTasks[0],
+      status: 'done',
+    });
+
+    deleteMock = vi.fn().mockResolvedValue({
+      ...mockTasks[0],
+    });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -72,6 +92,8 @@ describe('App (e2e)', () => {
             ),
 
           create: createMock,
+          update: updateMock,
+          delete: deleteMock,
         },
       })
       .compile();
@@ -233,6 +255,110 @@ describe('App (e2e)', () => {
           .expect(400);
 
         expect(createMock).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PATCH /tasks/:id
+  // ---------------------------------------------------------------------------
+
+  describe('PATCH /tasks/:id', () => {
+    it('updates a task successfully', async () => {
+      const response = await request(app.getHttpServer())
+        .patch('/tasks/1')
+        .send({ status: 'done' })
+        .expect(200);
+
+      expect(updateMock).toHaveBeenCalledExactlyOnceWith({
+        where: { id: 1 },
+        data: { status: 'done' },
+      });
+      expect(response.body).toEqual({
+        ...mockTasks[0],
+        status: 'done',
+      });
+    });
+
+    describe('Invalid Input', () => {
+      it('rejects invalid value', async () => {
+        await request(app.getHttpServer())
+          .patch('/tasks/1')
+          .send({ status: 'invalid' })
+          .expect(400);
+
+        expect(updateMock).not.toHaveBeenCalled();
+      });
+
+      it('rejects non-white-listed field', async () => {
+        await request(app.getHttpServer())
+          .patch('/tasks/1')
+          .send({ projectId: 1 })
+          .expect(400);
+
+        expect(updateMock).not.toHaveBeenCalled();
+      });
+
+      it('rejects invalid task ID', async () => {
+        await request(app.getHttpServer())
+          .patch('/tasks/hello')
+          .send({ status: 'done' })
+          .expect(400);
+
+        expect(updateMock).not.toHaveBeenCalled();
+      });
+
+      it('rejects non-exist task ID', async () => {
+        updateMock.mockRejectedValueOnce(prismaError);
+        const response = await request(app.getHttpServer())
+          .patch('/tasks/999')
+          .send({ status: 'done' })
+          .expect(404);
+
+        expect(response.body.message).toBe('Task not found');
+        expect(updateMock).toHaveBeenCalledExactlyOnceWith({
+          where: { id: 999 },
+          data: { status: 'done' },
+        });
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /tasks/:id
+  // ---------------------------------------------------------------------------
+
+  describe('DELETE /tasks/:id', () => {
+    it('deletes a task successfully', async () => {
+      const response = await request(app.getHttpServer())
+        .delete('/tasks/1')
+        .expect(200);
+
+      expect(deleteMock).toHaveBeenCalledExactlyOnceWith({
+        where: { id: 1 },
+      });
+      expect(response.body).toEqual({
+        ...mockTasks[0],
+      });
+    });
+
+    describe('Invalid Input', () => {
+      it('rejects non-exist task ID', async () => {
+        deleteMock.mockRejectedValueOnce(prismaError);
+        const response = await request(app.getHttpServer())
+          .delete('/tasks/999')
+          .expect(404);
+
+        expect(response.body.message).toBe('Task not found');
+        expect(deleteMock).toHaveBeenCalledExactlyOnceWith({
+          where: { id: 999 },
+        });
+      });
+
+      it('rejects invalid task ID', async () => {
+        await request(app.getHttpServer()).delete('/tasks/abc').expect(400);
+
+        expect(deleteMock).not.toHaveBeenCalled();
       });
     });
   });

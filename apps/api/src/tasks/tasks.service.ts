@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { UpdateTaskDto } from './dto/update-task.dto.js';
+import { Prisma } from '../generated/prisma/client.js';
 
 export type CreateTaskInput = {
   title: string;
@@ -11,23 +13,6 @@ export type CreateTaskInput = {
 @Injectable()
 export class TasksService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private tasks = [
-    {
-      id: 1,
-      title: 'Learn NestJS',
-      status: 'todo',
-      priority: 'high',
-      projectId: 1,
-    },
-    {
-      id: 2,
-      title: 'Build Tasks API',
-      status: 'in_progress',
-      priority: 'urgent',
-      projectId: 2,
-    },
-  ];
 
   findAll() {
     return this.prisma.task.findMany();
@@ -47,5 +32,38 @@ export class TasksService {
     return this.prisma.task.create({
       data: task,
     });
+  }
+
+  async update(id: number, changes: UpdateTaskDto) {
+    try {
+      return await this.prisma.task.update({
+        where: { id },
+        data: changes,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('Task not found');
+      }
+
+      throw error;
+    }
+  }
+
+  async remove(id: number) {
+    try {
+      return await this.prisma.task.delete({ where: { id } });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('Task not found');
+      }
+
+      throw error;
+    }
   }
 }
