@@ -1,4 +1,11 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class UpdateTaskDto {
   @IsOptional()
@@ -13,4 +20,9 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsIn(['low', 'medium', 'high', 'urgent'])
   priority?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  assigneeId?: number | null;
 }

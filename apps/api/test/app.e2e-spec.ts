@@ -44,6 +44,14 @@ const prismaError = new Prisma.PrismaClientKnownRequestError(
   },
 );
 
+const foreignKeyError = new Prisma.PrismaClientKnownRequestError(
+  'Foreign key constraint failed',
+  {
+    code: 'P2003',
+    clientVersion: '7.10.1',
+  },
+);
+
 // -----------------------------------------------------------------------------
 // E2E Tests
 // -----------------------------------------------------------------------------
@@ -191,6 +199,35 @@ describe('App (e2e)', () => {
       });
     });
 
+    it('creates a task and assign to user ID 1', async () => {
+      const assignedTaskInput = {
+        title: 'Learn Prisma Relations',
+        status: 'todo',
+        priority: 'high',
+        projectId: 1,
+        assigneeId: 1,
+      };
+
+      createMock.mockResolvedValueOnce({
+        id: 5,
+        ...assignedTaskInput,
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/tasks')
+        .send(assignedTaskInput)
+        .expect(201);
+
+      expect(response.body).toEqual({
+        id: 5,
+        ...assignedTaskInput,
+      });
+
+      expect(createMock).toHaveBeenCalledExactlyOnceWith({
+        data: assignedTaskInput,
+      });
+    });
+
     describe('Input Validation', () => {
       it('rejects invalid task data', async () => {
         const invalidInput = {
@@ -256,6 +293,21 @@ describe('App (e2e)', () => {
 
         expect(createMock).not.toHaveBeenCalled();
       });
+
+      it('rejects non-exist assignee ID', async () => {
+        const input = {
+          ...validTaskInput,
+          assigneeId: 999999,
+        };
+        createMock.mockRejectedValueOnce(foreignKeyError);
+        const response = await request(app.getHttpServer())
+          .post('/tasks')
+          .send(input)
+          .expect(400);
+
+        expect(response.body.message).toBe('Invalid task relation');
+        expect(createMock).toHaveBeenCalledExactlyOnceWith({ data: input });
+      });
     });
   });
 
@@ -277,6 +329,46 @@ describe('App (e2e)', () => {
       expect(response.body).toEqual({
         ...mockTasks[0],
         status: 'done',
+      });
+    });
+
+    it('updates a task assignee ID successfully', async () => {
+      updateMock.mockResolvedValueOnce({
+        ...mockTasks[0],
+        assigneeId: 1,
+      });
+      const response = await request(app.getHttpServer())
+        .patch('/tasks/1')
+        .send({ assigneeId: 1 })
+        .expect(200);
+
+      expect(updateMock).toHaveBeenCalledExactlyOnceWith({
+        where: { id: 1 },
+        data: { assigneeId: 1 },
+      });
+      expect(response.body).toEqual({
+        ...mockTasks[0],
+        assigneeId: 1,
+      });
+    });
+
+    it('unassigns a task', async () => {
+      updateMock.mockResolvedValueOnce({
+        ...mockTasks[0],
+        assigneeId: null,
+      });
+      const response = await request(app.getHttpServer())
+        .patch('/tasks/1')
+        .send({ assigneeId: null })
+        .expect(200);
+
+      expect(updateMock).toHaveBeenCalledExactlyOnceWith({
+        where: { id: 1 },
+        data: { assigneeId: null },
+      });
+      expect(response.body).toEqual({
+        ...mockTasks[0],
+        assigneeId: null,
       });
     });
 
@@ -319,6 +411,20 @@ describe('App (e2e)', () => {
         expect(updateMock).toHaveBeenCalledExactlyOnceWith({
           where: { id: 999 },
           data: { status: 'done' },
+        });
+      });
+
+      it('rejects non-exist assignee ID', async () => {
+        updateMock.mockRejectedValueOnce(foreignKeyError);
+        const response = await request(app.getHttpServer())
+          .patch('/tasks/3')
+          .send({ assigneeId: 999999 })
+          .expect(400);
+
+        expect(response.body.message).toBe('Invalid task relation');
+        expect(updateMock).toHaveBeenCalledExactlyOnceWith({
+          where: { id: 3 },
+          data: { assigneeId: 999999 },
         });
       });
     });

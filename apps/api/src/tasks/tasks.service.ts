@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -8,6 +12,7 @@ export type CreateTaskInput = {
   status: string;
   priority: string;
   projectId: number;
+  assigneeId?: number | null;
 };
 
 @Injectable()
@@ -28,10 +33,21 @@ export class TasksService {
     return task;
   }
 
-  create(task: CreateTaskInput) {
-    return this.prisma.task.create({
-      data: task,
-    });
+  async create(task: CreateTaskInput) {
+    try {
+      return await this.prisma.task.create({
+        data: task,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        throw new BadRequestException('Invalid task relation');
+      }
+
+      throw error;
+    }
   }
 
   async update(id: number, changes: UpdateTaskDto) {
@@ -41,11 +57,13 @@ export class TasksService {
         data: changes,
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
-        throw new NotFoundException('Task not found');
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2025') {
+          throw new NotFoundException('Task not found');
+        }
+        if (error.code === 'P2003') {
+          throw new BadRequestException('Invalid task relation');
+        }
       }
 
       throw error;

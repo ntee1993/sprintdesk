@@ -13,10 +13,11 @@ datasource db {
 }
 
 model User {
-  id       Int       @id @default(autoincrement())
-  name     String
-  email    String    @unique
-  projects Project[]
+  id            Int       @id @default(autoincrement())
+  name          String
+  email         String    @unique
+  projects      Project[]
+  assignedTasks Task[]
 }
 
 model Project {
@@ -28,10 +29,12 @@ model Project {
 }
 
 model Task {
-  id        Int     @id @default(autoincrement())
-  title     String
-  status    String
-  priority  String
-  projectId Int
-  project   Project @relation(fields: [projectId], references: [id])
+  id         Int     @id @default(autoincrement())
+  title      String
+  status     String
+  priority   String
+  projectId  Int
+  project    Project @relation(fields: [projectId], references: [id])
+  assigneeId Int?
+  assignee   User?   @relation(fields: [assigneeId], references: [id])
 }

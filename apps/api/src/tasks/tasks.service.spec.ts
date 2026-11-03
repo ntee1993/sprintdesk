@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TasksService } from './tasks.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -16,6 +16,14 @@ describe('TasksService', () => {
     'Record not found',
     {
       code: 'P2025',
+      clientVersion: '7.10.1',
+    },
+  );
+
+  const foreignKeyError = new Prisma.PrismaClientKnownRequestError(
+    'Foreign key constraint failed',
+    {
+      code: 'P2003',
       clientVersion: '7.10.1',
     },
   );
@@ -166,6 +174,44 @@ describe('TasksService', () => {
 
       expect(createMock).toHaveBeenCalledTimes(2);
     });
+
+    it('should create a task and assign to user ID 1', async () => {
+      const newTask = {
+        title: 'Learn Prisma Relations',
+        status: 'todo',
+        priority: 'high',
+        projectId: 1,
+        assigneeId: 1,
+      };
+
+      const createdTask = {
+        id: 5,
+        ...newTask,
+      };
+
+      createMock.mockResolvedValueOnce(createdTask);
+
+      const result = await tasksService.create(newTask);
+
+      expect(result).toEqual(createdTask);
+
+      expect(createMock).toHaveBeenCalledExactlyOnceWith({
+        data: newTask,
+      });
+    });
+
+    it('should reject with P2003 error', async () => {
+      createMock.mockRejectedValueOnce(foreignKeyError);
+      await expect(
+        tasksService.create({
+          title: 'Invalid Assignment',
+          status: 'todo',
+          priority: 'high',
+          projectId: 1,
+          assigneeId: 999999,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe('update', () => {
@@ -198,6 +244,13 @@ describe('TasksService', () => {
       await expect(
         tasksService.update(999, { status: 'done' }),
       ).rejects.toThrow(databaseError);
+    });
+
+    it('should reject with P2003 error', async () => {
+      updateMock.mockRejectedValueOnce(foreignKeyError);
+      await expect(
+        tasksService.update(1, { assigneeId: 999999 }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
