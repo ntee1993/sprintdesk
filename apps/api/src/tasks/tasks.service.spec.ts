@@ -119,6 +119,150 @@ describe('TasksService', () => {
         projectId: 1,
       });
     });
+
+    it('should filter by status', async () => {
+      await tasksService.findAll({ status: 'done' });
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: 'done',
+          priority: undefined,
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should filter by priority', async () => {
+      await tasksService.findAll({ priority: 'high' });
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: 'high',
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should filter by status and priority', async () => {
+      await tasksService.findAll({
+        status: 'done',
+        priority: 'high',
+      });
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: 'done',
+          priority: 'high',
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should use default pagination', async () => {
+      await tasksService.findAll({});
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should paginate to page 2', async () => {
+      await tasksService.findAll({ page: 2, limit: 5 });
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 5,
+        take: 5,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should filter and paginate tasks', async () => {
+      await tasksService.findAll({
+        status: 'done',
+        page: 3,
+        limit: 10,
+      });
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: 'done',
+          priority: undefined,
+        },
+        skip: 20,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should sort tasks by ID descending', async () => {
+      await tasksService.findAll({
+        sortBy: 'id',
+        order: 'desc',
+      });
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'desc' },
+      });
+    });
+
+    it('should sort tasks by title ascending by default', async () => {
+      await tasksService.findAll({
+        sortBy: 'title',
+      });
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { title: 'asc' },
+      });
+    });
+
+    it('should filter, paginate, and sort tasks', async () => {
+      await tasksService.findAll({
+        status: 'done',
+        page: 2,
+        limit: 5,
+        sortBy: 'title',
+        order: 'desc',
+      });
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: 'done',
+          priority: undefined,
+        },
+        skip: 5,
+        take: 5,
+        orderBy: { title: 'desc' },
+      });
+    });
   });
 
   describe('findOne', () => {

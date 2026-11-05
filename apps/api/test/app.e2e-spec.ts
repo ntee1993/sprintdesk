@@ -58,6 +58,7 @@ const foreignKeyError = new Prisma.PrismaClientKnownRequestError(
 
 describe('App (e2e)', () => {
   let app: INestApplication<App>;
+  let findManyMock: ReturnType<typeof vi.fn>;
   let createMock: ReturnType<typeof vi.fn>;
   let updateMock: ReturnType<typeof vi.fn>;
   let deleteMock: ReturnType<typeof vi.fn>;
@@ -67,6 +68,30 @@ describe('App (e2e)', () => {
   // ---------------------------------------------------------------------------
 
   beforeEach(async () => {
+    findManyMock = vi
+      .fn()
+      .mockImplementation(({ where, skip = 0, take = 10, orderBy } = {}) => {
+        const filteredTasks = mockTasks.filter(
+          (task) =>
+            (where?.status === undefined || task.status === where.status) &&
+            (where?.priority === undefined || task.priority === where.priority),
+        );
+
+        const field = orderBy?.title !== undefined ? 'title' : 'id';
+        const direction = orderBy?.[field] ?? 'asc';
+
+        const sortedTasks = [...filteredTasks].sort((a, b) => {
+          const comparison =
+            field === 'title' ? a.title.localeCompare(b.title) : a.id - b.id;
+
+          return direction === 'desc' ? -comparison : comparison;
+        });
+
+        const paginatedTasks = sortedTasks.slice(skip, skip + take);
+
+        return Promise.resolve(paginatedTasks);
+      });
+
     createMock = vi.fn().mockImplementation(({ data }) =>
       Promise.resolve({
         id: 3,
@@ -89,7 +114,7 @@ describe('App (e2e)', () => {
       .overrideProvider(PrismaService)
       .useValue({
         task: {
-          findMany: vi.fn().mockResolvedValue(mockTasks),
+          findMany: findManyMock,
 
           findUnique: vi
             .fn()
@@ -144,6 +169,243 @@ describe('App (e2e)', () => {
         .get('/tasks')
         .expect(200)
         .expect(mockTasks);
+    });
+
+    it('should filter tasks by status', async () => {
+      const expectedTasks = mockTasks.filter((task) => task.status === 'todo');
+
+      const response = await request(app.getHttpServer())
+        .get('/tasks?status=todo')
+        .expect(200);
+
+      expect(response.body).toEqual(expectedTasks);
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: 'todo',
+          priority: undefined,
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should filter tasks by priority', async () => {
+      const expectedTasks = mockTasks.filter(
+        (task) => task.priority === 'urgent',
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/tasks?priority=urgent')
+        .expect(200);
+
+      expect(response.body).toEqual(expectedTasks);
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: 'urgent',
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should filter tasks by status and priority', async () => {
+      const expectedTasks = mockTasks.filter(
+        (task) => task.status === 'in_progress' && task.priority === 'urgent',
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/tasks?status=in_progress&priority=urgent')
+        .expect(200);
+
+      expect(response.body).toEqual(expectedTasks);
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: 'in_progress',
+          priority: 'urgent',
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should reject an invalid status', async () => {
+      await request(app.getHttpServer())
+        .get('/tasks?status=invalid')
+        .expect(400);
+
+      expect(findManyMock).not.toHaveBeenCalled();
+    });
+
+    it('should reject an unknown query parameter', async () => {
+      await request(app.getHttpServer()).get('/tasks?unknown=test').expect(400);
+
+      expect(findManyMock).not.toHaveBeenCalled();
+    });
+
+    it('should return page 1 with limit 1', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks?page=1&limit=1')
+        .expect(200);
+
+      expect(response.body).toEqual([mockTasks[0]]);
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 0,
+        take: 1,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should return page 2 with limit 1', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks?page=2&limit=1')
+        .expect(200);
+
+      expect(response.body).toEqual([mockTasks[1]]);
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 1,
+        take: 1,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should return an empty array for page 3 with limit 1', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks?page=3&limit=1')
+        .expect(200);
+
+      expect(response.body).toEqual([]);
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 2,
+        take: 1,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should filter and paginate tasks', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks?status=in_progress&page=1&limit=1')
+        .expect(200);
+
+      expect(response.body).toEqual([mockTasks[1]]);
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: 'in_progress',
+          priority: undefined,
+        },
+        skip: 0,
+        take: 1,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('should reject page 0', async () => {
+      await request(app.getHttpServer()).get('/tasks?page=0').expect(400);
+
+      expect(findManyMock).not.toHaveBeenCalled();
+    });
+
+    it('should reject a limit above 100', async () => {
+      await request(app.getHttpServer()).get('/tasks?limit=101').expect(400);
+
+      expect(findManyMock).not.toHaveBeenCalled();
+    });
+
+    it('should reject a non-numeric page', async () => {
+      await request(app.getHttpServer()).get('/tasks?page=abc').expect(400);
+
+      expect(findManyMock).not.toHaveBeenCalled();
+    });
+
+    it('should sort tasks by ID descending', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks?sortBy=id&order=desc')
+        .expect(200);
+
+      expect(response.body).toEqual([...mockTasks].reverse());
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'desc' },
+      });
+    });
+
+    it('should sort tasks by title ascending', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks?sortBy=title&order=asc')
+        .expect(200);
+
+      const expectedTasks = [...mockTasks].sort((a, b) =>
+        a.title.localeCompare(b.title),
+      );
+
+      expect(response.body).toEqual(expectedTasks);
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { title: 'asc' },
+      });
+    });
+
+    it('should sort by ID descending and paginate', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks?sortBy=id&order=desc&page=1&limit=1')
+        .expect(200);
+
+      expect(response.body).toEqual([mockTasks[1]]);
+
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+        },
+        skip: 0,
+        take: 1,
+        orderBy: { id: 'desc' },
+      });
+    });
+
+    it('should reject an invalid sort field', async () => {
+      await request(app.getHttpServer())
+        .get('/tasks?sortBy=unknown')
+        .expect(400);
+
+      expect(findManyMock).not.toHaveBeenCalled();
+    });
+
+    it('should reject an invalid sort direction', async () => {
+      await request(app.getHttpServer()).get('/tasks?order=random').expect(400);
+
+      expect(findManyMock).not.toHaveBeenCalled();
     });
   });
 

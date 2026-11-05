@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
+import { ListTasksQueryDto } from './dto/list-tasks-query.dto.js';
 import { Prisma } from '../generated/prisma/client.js';
 
 export type CreateTaskInput = {
@@ -19,8 +20,24 @@ export type CreateTaskInput = {
 export class TasksService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
-    return this.prisma.task.findMany();
+  findAll(filters: ListTasksQueryDto = {}) {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 10;
+    const skip = (page - 1) * limit;
+    const sortBy = filters.sortBy ?? 'id';
+    const order = filters.order === 'desc' ? 'desc' : 'asc';
+
+    return this.prisma.task.findMany({
+      where: {
+        status: filters.status,
+        priority: filters.priority,
+      },
+      skip,
+      take: limit,
+      orderBy: {
+        [sortBy]: order,
+      },
+    });
   }
 
   async findOne(id: number) {

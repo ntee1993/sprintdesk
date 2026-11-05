@@ -36,9 +36,31 @@ describe('TasksController', () => {
       ];
       tasksService.findAll.mockReturnValue(tasks);
 
-      const result = tasksController.findAll();
+      const result = tasksController.findAll({});
 
       expect(tasksService.findAll).toHaveBeenCalledOnce();
+      expect(result).toEqual(tasks);
+    });
+
+    it('should pass status filter to the service and return its result', () => {
+      const query = { status: 'done' };
+      const tasks = [
+        {
+          id: 1,
+          title: 'Learn NestJS',
+          status: 'done',
+          priority: 'high',
+          projectId: 1,
+        },
+      ];
+
+      tasksService.findAll.mockReturnValue(tasks);
+
+      const result = tasksController.findAll(query);
+
+      expect(tasksService.findAll).toHaveBeenCalledExactlyOnceWith({
+        status: 'done',
+      });
       expect(result).toEqual(tasks);
     });
   });
