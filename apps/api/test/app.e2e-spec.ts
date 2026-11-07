@@ -1,12 +1,13 @@
 import { Test } from '@nestjs/testing';
 import type { TestingModule } from '@nestjs/testing';
-import type { INestApplication } from '@nestjs/common';
+import { ConflictException, type INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { Prisma } from '../src/generated/prisma/client.js';
+import { AuthService } from '../src/auth/auth.service.js';
 
 // -----------------------------------------------------------------------------
 // Test Fixtures
@@ -62,12 +63,15 @@ describe('App (e2e)', () => {
   let createMock: ReturnType<typeof vi.fn>;
   let updateMock: ReturnType<typeof vi.fn>;
   let deleteMock: ReturnType<typeof vi.fn>;
+  let registerMock: ReturnType<typeof vi.fn>;
 
   // ---------------------------------------------------------------------------
   // Setup & Teardown
   // ---------------------------------------------------------------------------
 
   beforeEach(async () => {
+    registerMock = vi.fn();
+
     findManyMock = vi
       .fn()
       .mockImplementation(({ where, skip = 0, take = 10, orderBy } = {}) => {
@@ -128,6 +132,10 @@ describe('App (e2e)', () => {
           update: updateMock,
           delete: deleteMock,
         },
+      })
+      .overrideProvider(AuthService)
+      .useValue({
+        register: registerMock,
       })
       .compile();
 
@@ -570,6 +578,104 @@ describe('App (e2e)', () => {
         expect(response.body.message).toBe('Invalid task relation');
         expect(createMock).toHaveBeenCalledExactlyOnceWith({ data: input });
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /auth/register
+  // ---------------------------------------------------------------------------
+
+  describe('POST /auth/register', () => {
+    const validRegisterInput = {
+      name: 'Tester',
+      email: 'tester@example.test',
+      password: 'MySecurePassword123!',
+    };
+
+    it('registers a user and returns 201 without sensitive fields', async () => {
+      const body = {
+        name: 'Tester',
+        email: 'tester@example.test',
+        password: 'MySecurePassword123!',
+      };
+
+      registerMock.mockResolvedValue({
+        id: 1,
+        name: 'Tester',
+        email: 'tester@example.test',
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send(body)
+        .expect(201);
+
+      expect(registerMock).toHaveBeenCalledExactlyOnceWith({
+        name: 'Tester',
+        email: 'tester@example.test',
+        password: 'MySecurePassword123!',
+      });
+
+      expect(response.body).toEqual({
+        id: 1,
+        name: 'Tester',
+        email: 'tester@example.test',
+      });
+      expect(response.body).not.toHaveProperty('password');
+      expect(response.body).not.toHaveProperty('passwordHash');
+    });
+
+    it('rejects an invalid email', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          ...validRegisterInput,
+          email: 'invalid-email',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(registerMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a password shorter than 12 characters', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          ...validRegisterInput,
+          password: '12345',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(registerMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unexpected field', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          ...validRegisterInput,
+          role: 'admin',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(registerMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when the email is already registered', async () => {
+      registerMock.mockRejectedValueOnce(
+        new ConflictException('Email already registered'),
+      );
+
+      const response = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send(validRegisterInput)
+        .expect(409);
+
+      expect(response.body.message).toBe('Email already registered');
+      expect(registerMock).toHaveBeenCalledExactlyOnceWith(validRegisterInput);
     });
   });
 
