@@ -19,6 +19,7 @@ model User {
   passwordHash  String?
   projects      Project[]
   assignedTasks Task[]
+  sessions      Session[]
 }
 
 model Project {
@@ -38,4 +39,16 @@ model Task {
   project    Project @relation(fields: [projectId], references: [id])
   assigneeId Int?
   assignee   User?   @relation(fields: [assigneeId], references: [id])
+}
+
+model Session {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }

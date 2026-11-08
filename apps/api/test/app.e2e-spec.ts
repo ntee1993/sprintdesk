@@ -1,6 +1,11 @@
 import { Test } from '@nestjs/testing';
 import type { TestingModule } from '@nestjs/testing';
-import { ConflictException, type INestApplication } from '@nestjs/common';
+import {
+  ConflictException,
+  type INestApplication,
+  UnauthorizedException,
+} from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 
@@ -8,6 +13,7 @@ import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { Prisma } from '../src/generated/prisma/client.js';
 import { AuthService } from '../src/auth/auth.service.js';
+import { SessionService } from '../src/auth/session.service.js';
 
 // -----------------------------------------------------------------------------
 // Test Fixtures
@@ -64,6 +70,9 @@ describe('App (e2e)', () => {
   let updateMock: ReturnType<typeof vi.fn>;
   let deleteMock: ReturnType<typeof vi.fn>;
   let registerMock: ReturnType<typeof vi.fn>;
+  let loginWithSessionMock: ReturnType<typeof vi.fn>;
+  let validateSessionMock: ReturnType<typeof vi.fn>;
+  let revokeSessionMock: ReturnType<typeof vi.fn>;
 
   // ---------------------------------------------------------------------------
   // Setup & Teardown
@@ -71,6 +80,9 @@ describe('App (e2e)', () => {
 
   beforeEach(async () => {
     registerMock = vi.fn();
+    loginWithSessionMock = vi.fn();
+    validateSessionMock = vi.fn();
+    revokeSessionMock = vi.fn();
 
     findManyMock = vi
       .fn()
@@ -136,10 +148,17 @@ describe('App (e2e)', () => {
       .overrideProvider(AuthService)
       .useValue({
         register: registerMock,
+        loginWithSession: loginWithSessionMock,
+      })
+      .overrideProvider(SessionService)
+      .useValue({
+        validateSession: validateSessionMock,
+        revokeSession: revokeSessionMock,
       })
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     await app.init();
   });
 
@@ -676,6 +695,187 @@ describe('App (e2e)', () => {
 
       expect(response.body.message).toBe('Email already registered');
       expect(registerMock).toHaveBeenCalledExactlyOnceWith(validRegisterInput);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /auth/login
+  // ---------------------------------------------------------------------------
+
+  describe('POST /auth/login', () => {
+    it('logs in successfully and returns 200', async () => {
+      const body = {
+        email: 'tester@example.test',
+        password: 'MySecurePassword123!',
+      };
+
+      loginWithSessionMock.mockResolvedValue({
+        user: {
+          id: 1,
+          name: 'Tester',
+          email: body.email,
+        },
+        token: 'test-session-token',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send(body)
+        .expect(200);
+
+      expect(loginWithSessionMock).toHaveBeenCalledExactlyOnceWith(body);
+      expect(response.body).toEqual({
+        id: 1,
+        name: 'Tester',
+        email: body.email,
+      });
+      expect(response.body).not.toHaveProperty('password');
+      expect(response.body).not.toHaveProperty('passwordHash');
+      expect(response.body).not.toHaveProperty('token');
+      expect(response.body).not.toHaveProperty('expiresAt');
+      expect(response.headers['set-cookie']?.[0]).toContain(
+        'sprintdesk_session=test-session-token',
+      );
+      expect(response.headers['set-cookie']?.[0]).toContain('HttpOnly');
+    });
+
+    it('rejects an invalid login email', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: 'invalid-email',
+          password: 'MySecurePassword123!',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(loginWithSessionMock).not.toHaveBeenCalled();
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('rejects an empty password', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email: 'tester@example.test',
+          password: '',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(loginWithSessionMock).not.toHaveBeenCalled();
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('returns 401 for an unknown email', async () => {
+      const credentials = {
+        email: 'unknown@example.test',
+        password: 'MySecurePassword123!',
+      };
+
+      loginWithSessionMock.mockRejectedValueOnce(
+        new UnauthorizedException('Invalid email or password'),
+      );
+
+      const response = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send(credentials)
+        .expect(401);
+
+      expect(response.body.message).toBe('Invalid email or password');
+      expect(loginWithSessionMock).toHaveBeenCalledExactlyOnceWith(credentials);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('returns 401 for an incorrect password', async () => {
+      const credentials = {
+        email: 'tester@example.test',
+        password: 'IncorrectPassword123!',
+      };
+
+      loginWithSessionMock.mockRejectedValueOnce(
+        new UnauthorizedException('Invalid email or password'),
+      );
+
+      const response = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send(credentials)
+        .expect(401);
+
+      expect(response.body.message).toBe('Invalid email or password');
+      expect(loginWithSessionMock).toHaveBeenCalledExactlyOnceWith(credentials);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /auth/me
+  // ---------------------------------------------------------------------------
+
+  describe('GET /auth/me', () => {
+    it('returns the user for a valid session cookie', async () => {
+      const user = {
+        id: 1,
+        name: 'Tester',
+        email: 'tester@example.test',
+      };
+      validateSessionMock.mockResolvedValue(user);
+
+      const response = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Cookie', 'sprintdesk_session=test-session-token')
+        .expect(200);
+
+      expect(validateSessionMock).toHaveBeenCalledExactlyOnceWith(
+        'test-session-token',
+      );
+      expect(response.body).toEqual(user);
+    });
+
+    it('rejects requests without a session cookie', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/auth/me')
+        .expect(401);
+
+      expect(response.body.message).toBe('Unauthenticated');
+      expect(validateSessionMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid session token', async () => {
+      validateSessionMock.mockResolvedValue(null);
+
+      const response = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Cookie', 'sprintdesk_session=invalid-session-token')
+        .expect(401);
+
+      expect(response.body.message).toBe('Unauthenticated');
+      expect(validateSessionMock).toHaveBeenCalledExactlyOnceWith(
+        'invalid-session-token',
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /auth/logout
+  // ---------------------------------------------------------------------------
+
+  describe('POST /auth/logout', () => {
+    it('revokes the session and clears its cookie', async () => {
+      revokeSessionMock.mockResolvedValue(undefined);
+
+      const response = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Cookie', 'sprintdesk_session=test-session-token')
+        .expect(204);
+
+      expect(revokeSessionMock).toHaveBeenCalledExactlyOnceWith(
+        'test-session-token',
+      );
+      expect(response.headers['set-cookie']?.[0]).toContain(
+        'sprintdesk_session=;',
+      );
     });
   });
 

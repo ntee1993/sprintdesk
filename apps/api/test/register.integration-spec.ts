@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -34,6 +35,7 @@ describe('Registration Integration', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     await app.init();
 
     const prismaService = app.get(PrismaService);
@@ -163,6 +165,175 @@ describe('Registration Integration', () => {
 
       expect(await verifyPassword(passwordHash, firstPassword)).toBe(true);
       expect(await verifyPassword(passwordHash, secondPassword)).toBe(false);
+    } finally {
+      await prisma.user.deleteMany({
+        where: { email },
+      });
+    }
+  });
+
+  it('logs in a registered user with valid credentials', async () => {
+    if (!app || !prisma) {
+      throw new Error('Application was not initialized');
+    }
+
+    const email = `login-${randomUUID()}@example.test`;
+    const password = 'MySecurePassword123!';
+
+    try {
+      const registration = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          name: 'Login Tester',
+          email,
+          password,
+        })
+        .expect(201);
+
+      const login = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password })
+        .expect(200);
+
+      expect(login.body).toEqual({
+        id: registration.body.id,
+        name: registration.body.name,
+        email: registration.body.email,
+      });
+      expect(login.body).not.toHaveProperty('password');
+      expect(login.body).not.toHaveProperty('passwordHash');
+    } finally {
+      await prisma.user.deleteMany({
+        where: { email },
+      });
+    }
+  });
+
+  it('rejects login with an unknown email', async () => {
+    if (!app || !prisma) {
+      throw new Error('Application was not initialized');
+    }
+
+    const email = `unknown-${randomUUID()}@example.test`;
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email,
+        password: 'MySecurePassword123!',
+      })
+      .expect(401);
+
+    expect(response.body.message).toBe('Invalid email or password');
+  });
+
+  it('rejects an incorrect password for an existing user', async () => {
+    if (!app || !prisma) {
+      throw new Error('Application was not initialized');
+    }
+
+    const email = `wrong-password-${randomUUID()}@example.test`;
+    const correctPassword = 'CorrectPassword123!';
+
+    try {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          name: 'Password Test User',
+          email,
+          password: correctPassword,
+        })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          email,
+          password: 'WrongPassword123!',
+        })
+        .expect(401);
+
+      expect(response.body.message).toBe('Invalid email or password');
+
+      const savedUser = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      expect(savedUser).not.toBeNull();
+    } finally {
+      await prisma.user.deleteMany({
+        where: { email },
+      });
+    }
+  });
+
+  it('completes the register, login, session and logout flow', async () => {
+    if (!app || !prisma) {
+      throw new Error('Application was not initialized');
+    }
+
+    const email = `session-flow-${randomUUID()}@example.test`;
+    const password = 'MySecurePassword123!';
+
+    try {
+      const registration = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({
+          name: 'Session Flow Tester',
+          email,
+          password,
+        })
+        .expect(201);
+
+      const loginResponse = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password })
+        .expect(200);
+
+      expect(loginResponse.body).toEqual({
+        id: registration.body.id,
+        name: registration.body.name,
+        email: registration.body.email,
+      });
+      expect(loginResponse.body).not.toHaveProperty('token');
+      expect(loginResponse.body).not.toHaveProperty('expiresAt');
+
+      const setCookie = loginResponse.headers['set-cookie']?.[0];
+
+      expect(setCookie).toContain('HttpOnly');
+
+      if (!setCookie) {
+        throw new Error('Login response did not set a session cookie');
+      }
+
+      const sessionCookie = setCookie.split(';')[0];
+
+      const meResponse = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Cookie', sessionCookie)
+        .expect(200);
+
+      expect(meResponse.body).toEqual({
+        id: registration.body.id,
+        name: registration.body.name,
+        email: registration.body.email,
+      });
+
+      const logoutResponse = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Cookie', sessionCookie)
+        .expect(204);
+
+      expect(logoutResponse.headers['set-cookie']?.[0]).toContain(
+        'sprintdesk_session=;',
+      );
+
+      const revokedSessionResponse = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Cookie', sessionCookie)
+        .expect(401);
+
+      expect(revokedSessionResponse.body.message).toBe('Unauthenticated');
     } finally {
       await prisma.user.deleteMany({
         where: { email },
