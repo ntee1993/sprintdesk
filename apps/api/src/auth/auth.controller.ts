@@ -7,7 +7,7 @@ import {
   Post,
   Req,
   Res,
-  UnauthorizedException,
+  UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
@@ -15,6 +15,10 @@ import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import {
+  SessionAuthGuard,
+  type AuthenticatedRequest,
+} from './session-auth.guard.js';
 import { SessionService } from './session.service.js';
 
 @Controller('auth')
@@ -58,21 +62,9 @@ export class AuthController {
   }
 
   @Get('me')
-  async me(@Req() req: Request) {
-    const cookies = req.cookies as Record<string, unknown> | undefined;
-    const token = cookies?.sprintdesk_session;
-
-    if (typeof token !== 'string' || token.length === 0) {
-      throw new UnauthorizedException('Unauthenticated');
-    }
-
-    const user = await this.sessions.validateSession(token);
-
-    if (user === null) {
-      throw new UnauthorizedException('Unauthenticated');
-    }
-
-    return user;
+  @UseGuards(SessionAuthGuard)
+  me(@Req() req: AuthenticatedRequest) {
+    return req.user;
   }
 
   @Post('logout')
