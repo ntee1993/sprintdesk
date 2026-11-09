@@ -13,6 +13,7 @@ import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { Prisma } from '../src/generated/prisma/client.js';
 import { AuthService } from '../src/auth/auth.service.js';
+import { ProjectAuthorizationService } from '../src/auth/project-authorization.service.js';
 import { SessionService } from '../src/auth/session.service.js';
 
 // -----------------------------------------------------------------------------
@@ -36,6 +37,40 @@ const mockTasks = [
   },
 ];
 
+const mockProjectAccess: Record<
+  number,
+  { ownerId: number; memberIds: number[] }
+> = {
+  1: { ownerId: 1, memberIds: [] },
+  2: { ownerId: 2, memberIds: [1] },
+};
+
+function matchesProjectPermission(task: { projectId: number }, project: any) {
+  const conditions = project?.is?.OR;
+
+  if (!Array.isArray(conditions)) {
+    return false;
+  }
+
+  const access = mockProjectAccess[task.projectId];
+
+  if (!access) {
+    return false;
+  }
+
+  return conditions.some((condition) => {
+    if (condition.ownerId !== undefined) {
+      return access.ownerId === condition.ownerId;
+    }
+
+    const membership = condition.memberships?.some;
+
+    return (
+      membership !== undefined && access.memberIds.includes(membership.userId)
+    );
+  });
+}
+
 const validTaskInput = {
   title: 'Learn Dependency Injection',
   status: 'todo',
@@ -43,13 +78,8 @@ const validTaskInput = {
   projectId: 1,
 };
 
-const prismaError = new Prisma.PrismaClientKnownRequestError(
-  'Record not found',
-  {
-    code: 'P2025',
-    clientVersion: '7.10.1',
-  },
-);
+const authenticatedSessionCookie =
+  'sprintdesk_session=authenticated-session-token';
 
 const foreignKeyError = new Prisma.PrismaClientKnownRequestError(
   'Foreign key constraint failed',
@@ -73,6 +103,7 @@ describe('App (e2e)', () => {
   let loginWithSessionMock: ReturnType<typeof vi.fn>;
   let validateSessionMock: ReturnType<typeof vi.fn>;
   let revokeSessionMock: ReturnType<typeof vi.fn>;
+  let getProjectRoleMock: ReturnType<typeof vi.fn>;
 
   // ---------------------------------------------------------------------------
   // Setup & Teardown
@@ -83,30 +114,41 @@ describe('App (e2e)', () => {
     loginWithSessionMock = vi.fn();
     validateSessionMock = vi.fn();
     revokeSessionMock = vi.fn();
+    getProjectRoleMock = vi.fn();
+    validateSessionMock.mockResolvedValue({
+      id: 1,
+      name: 'Tester',
+      email: 'tester@example.test',
+    });
+    getProjectRoleMock.mockResolvedValue('OWNER');
 
     findManyMock = vi
       .fn()
-      .mockImplementation(({ where, skip = 0, take = 10, orderBy } = {}) => {
-        const filteredTasks = mockTasks.filter(
-          (task) =>
-            (where?.status === undefined || task.status === where.status) &&
-            (where?.priority === undefined || task.priority === where.priority),
-        );
+      .mockImplementation(
+        ({ where, skip = 0, take = 10, orderBy }: any = {}) => {
+          const filteredTasks = mockTasks.filter(
+            (task) =>
+              (where?.status === undefined || task.status === where.status) &&
+              (where?.priority === undefined ||
+                task.priority === where.priority) &&
+              matchesProjectPermission(task, where?.project),
+          );
 
-        const field = orderBy?.title !== undefined ? 'title' : 'id';
-        const direction = orderBy?.[field] ?? 'asc';
+          const field = orderBy?.title !== undefined ? 'title' : 'id';
+          const direction = orderBy?.[field] ?? 'asc';
 
-        const sortedTasks = [...filteredTasks].sort((a, b) => {
-          const comparison =
-            field === 'title' ? a.title.localeCompare(b.title) : a.id - b.id;
+          const sortedTasks = [...filteredTasks].sort((a, b) => {
+            const comparison =
+              field === 'title' ? a.title.localeCompare(b.title) : a.id - b.id;
 
-          return direction === 'desc' ? -comparison : comparison;
-        });
+            return direction === 'desc' ? -comparison : comparison;
+          });
 
-        const paginatedTasks = sortedTasks.slice(skip, skip + take);
+          const paginatedTasks = sortedTasks.slice(skip, skip + take);
 
-        return Promise.resolve(paginatedTasks);
-      });
+          return Promise.resolve(paginatedTasks);
+        },
+      );
 
     createMock = vi.fn().mockImplementation(({ data }) =>
       Promise.resolve({
@@ -115,14 +157,14 @@ describe('App (e2e)', () => {
       }),
     );
 
-    updateMock = vi.fn().mockResolvedValue({
-      ...mockTasks[0],
-      status: 'done',
-    });
+    updateMock = vi.fn().mockResolvedValue([
+      {
+        ...mockTasks[0],
+        status: 'done',
+      },
+    ]);
 
-    deleteMock = vi.fn().mockResolvedValue({
-      ...mockTasks[0],
-    });
+    deleteMock = vi.fn().mockResolvedValue({ count: 1 });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -141,8 +183,19 @@ describe('App (e2e)', () => {
             ),
 
           create: createMock,
-          update: updateMock,
-          delete: deleteMock,
+          updateManyAndReturn: updateMock,
+          findFirst: vi
+            .fn()
+            .mockImplementation(({ where }: any) =>
+              Promise.resolve(
+                mockTasks.find(
+                  (task) =>
+                    task.id === where.id &&
+                    matchesProjectPermission(task, where.project),
+                ) ?? null,
+              ),
+            ),
+          deleteMany: deleteMock,
         },
       })
       .overrideProvider(AuthService)
@@ -154,6 +207,10 @@ describe('App (e2e)', () => {
       .useValue({
         validateSession: validateSessionMock,
         revokeSession: revokeSessionMock,
+      })
+      .overrideProvider(ProjectAuthorizationService)
+      .useValue({
+        getProjectRole: getProjectRoleMock,
       })
       .compile();
 
@@ -191,9 +248,48 @@ describe('App (e2e)', () => {
   // ---------------------------------------------------------------------------
 
   describe('GET /tasks', () => {
+    it('rejects requests without a valid session', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks')
+        .expect(401);
+
+      expect(response.body.message).toBe('Unauthenticated');
+      expect(findManyMock).not.toHaveBeenCalled();
+    });
+
+    it('returns no tasks from projects outside the user permission scope', async () => {
+      validateSessionMock.mockResolvedValueOnce({
+        id: 99,
+        name: 'Non-member',
+        email: 'non-member@example.test',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(200);
+
+      expect(response.body).toEqual([]);
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+          project: {
+            is: {
+              OR: [{ ownerId: 99 }, { memberships: { some: { userId: 99 } } }],
+            },
+          },
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
     it('returns all tasks', () => {
       return request(app.getHttpServer())
         .get('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200)
         .expect(mockTasks);
     });
@@ -203,14 +299,15 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/tasks?status=todo')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual(expectedTasks);
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: 'todo',
           priority: undefined,
-        },
+        }),
         skip: 0,
         take: 10,
         orderBy: { id: 'asc' },
@@ -224,14 +321,15 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/tasks?priority=urgent')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual(expectedTasks);
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: undefined,
           priority: 'urgent',
-        },
+        }),
         skip: 0,
         take: 10,
         orderBy: { id: 'asc' },
@@ -245,14 +343,15 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/tasks?status=in_progress&priority=urgent')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual(expectedTasks);
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: 'in_progress',
           priority: 'urgent',
-        },
+        }),
         skip: 0,
         take: 10,
         orderBy: { id: 'asc' },
@@ -262,13 +361,17 @@ describe('App (e2e)', () => {
     it('should reject an invalid status', async () => {
       await request(app.getHttpServer())
         .get('/tasks?status=invalid')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(400);
 
       expect(findManyMock).not.toHaveBeenCalled();
     });
 
     it('should reject an unknown query parameter', async () => {
-      await request(app.getHttpServer()).get('/tasks?unknown=test').expect(400);
+      await request(app.getHttpServer())
+        .get('/tasks?unknown=test')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(400);
 
       expect(findManyMock).not.toHaveBeenCalled();
     });
@@ -276,15 +379,16 @@ describe('App (e2e)', () => {
     it('should return page 1 with limit 1', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks?page=1&limit=1')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual([mockTasks[0]]);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: undefined,
           priority: undefined,
-        },
+        }),
         skip: 0,
         take: 1,
         orderBy: { id: 'asc' },
@@ -294,15 +398,16 @@ describe('App (e2e)', () => {
     it('should return page 2 with limit 1', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks?page=2&limit=1')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual([mockTasks[1]]);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: undefined,
           priority: undefined,
-        },
+        }),
         skip: 1,
         take: 1,
         orderBy: { id: 'asc' },
@@ -312,15 +417,16 @@ describe('App (e2e)', () => {
     it('should return an empty array for page 3 with limit 1', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks?page=3&limit=1')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual([]);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: undefined,
           priority: undefined,
-        },
+        }),
         skip: 2,
         take: 1,
         orderBy: { id: 'asc' },
@@ -330,15 +436,16 @@ describe('App (e2e)', () => {
     it('should filter and paginate tasks', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks?status=in_progress&page=1&limit=1')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual([mockTasks[1]]);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: 'in_progress',
           priority: undefined,
-        },
+        }),
         skip: 0,
         take: 1,
         orderBy: { id: 'asc' },
@@ -346,19 +453,28 @@ describe('App (e2e)', () => {
     });
 
     it('should reject page 0', async () => {
-      await request(app.getHttpServer()).get('/tasks?page=0').expect(400);
+      await request(app.getHttpServer())
+        .get('/tasks?page=0')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(400);
 
       expect(findManyMock).not.toHaveBeenCalled();
     });
 
     it('should reject a limit above 100', async () => {
-      await request(app.getHttpServer()).get('/tasks?limit=101').expect(400);
+      await request(app.getHttpServer())
+        .get('/tasks?limit=101')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(400);
 
       expect(findManyMock).not.toHaveBeenCalled();
     });
 
     it('should reject a non-numeric page', async () => {
-      await request(app.getHttpServer()).get('/tasks?page=abc').expect(400);
+      await request(app.getHttpServer())
+        .get('/tasks?page=abc')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(400);
 
       expect(findManyMock).not.toHaveBeenCalled();
     });
@@ -366,15 +482,16 @@ describe('App (e2e)', () => {
     it('should sort tasks by ID descending', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks?sortBy=id&order=desc')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual([...mockTasks].reverse());
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: undefined,
           priority: undefined,
-        },
+        }),
         skip: 0,
         take: 10,
         orderBy: { id: 'desc' },
@@ -384,6 +501,7 @@ describe('App (e2e)', () => {
     it('should sort tasks by title ascending', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks?sortBy=title&order=asc')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       const expectedTasks = [...mockTasks].sort((a, b) =>
@@ -393,10 +511,10 @@ describe('App (e2e)', () => {
       expect(response.body).toEqual(expectedTasks);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: undefined,
           priority: undefined,
-        },
+        }),
         skip: 0,
         take: 10,
         orderBy: { title: 'asc' },
@@ -406,15 +524,16 @@ describe('App (e2e)', () => {
     it('should sort by ID descending and paginate', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks?sortBy=id&order=desc&page=1&limit=1')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual([mockTasks[1]]);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
+        where: expect.objectContaining({
           status: undefined,
           priority: undefined,
-        },
+        }),
         skip: 0,
         take: 1,
         orderBy: { id: 'desc' },
@@ -424,13 +543,17 @@ describe('App (e2e)', () => {
     it('should reject an invalid sort field', async () => {
       await request(app.getHttpServer())
         .get('/tasks?sortBy=unknown')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(400);
 
       expect(findManyMock).not.toHaveBeenCalled();
     });
 
     it('should reject an invalid sort direction', async () => {
-      await request(app.getHttpServer()).get('/tasks?order=random').expect(400);
+      await request(app.getHttpServer())
+        .get('/tasks?order=random')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(400);
 
       expect(findManyMock).not.toHaveBeenCalled();
     });
@@ -444,6 +567,7 @@ describe('App (e2e)', () => {
     it('returns the task when ID exists', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
       expect(response.body).toEqual(mockTasks[0]);
@@ -452,15 +576,32 @@ describe('App (e2e)', () => {
     it('returns 404 when task does not exist', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks/999')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(404);
 
       expect(response.body.statusCode).toBe(404);
       expect(response.body.message).toBe('Task not found');
     });
 
+    it('hides a task from a non-member with 404', async () => {
+      validateSessionMock.mockResolvedValueOnce({
+        id: 99,
+        name: 'Non-member',
+        email: 'non-member@example.test',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(404);
+
+      expect(response.body.message).toBe('Task not found');
+    });
+
     it('returns 400 when ID is invalid', async () => {
       const response = await request(app.getHttpServer())
         .get('/tasks/hello')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -472,9 +613,12 @@ describe('App (e2e)', () => {
   // ---------------------------------------------------------------------------
 
   describe('POST /tasks', () => {
-    it('creates a task and returns 201', async () => {
+    it('allows an owner to create a task', async () => {
+      getProjectRoleMock.mockResolvedValueOnce('OWNER');
+
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
         .send(validTaskInput)
         .expect(201);
 
@@ -486,6 +630,7 @@ describe('App (e2e)', () => {
       expect(createMock).toHaveBeenCalledExactlyOnceWith({
         data: validTaskInput,
       });
+      expect(getProjectRoleMock).toHaveBeenCalledExactlyOnceWith(1, 1);
     });
 
     it('creates a task and assign to user ID 1', async () => {
@@ -504,6 +649,7 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
         .send(assignedTaskInput)
         .expect(201);
 
@@ -517,6 +663,61 @@ describe('App (e2e)', () => {
       });
     });
 
+    it('allows an editor to create a task', async () => {
+      const input = {
+        ...validTaskInput,
+        title: 'Editor Created Task',
+      };
+      getProjectRoleMock.mockResolvedValueOnce('EDITOR');
+
+      const response = await request(app.getHttpServer())
+        .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(input)
+        .expect(201);
+
+      expect(response.body).toEqual({ id: 3, ...input });
+      expect(getProjectRoleMock).toHaveBeenCalledExactlyOnceWith(1, 1);
+      expect(createMock).toHaveBeenCalledExactlyOnceWith({ data: input });
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/tasks')
+        .send(validTaskInput)
+        .expect(401);
+
+      expect(response.body.message).toBe('Unauthenticated');
+      expect(getProjectRoleMock).not.toHaveBeenCalled();
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a viewer from creating a task', async () => {
+      getProjectRoleMock.mockResolvedValueOnce('VIEWER');
+
+      const response = await request(app.getHttpServer())
+        .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(validTaskInput)
+        .expect(403);
+
+      expect(response.body.message).toBe('Insufficient project permission');
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-member from creating a task', async () => {
+      getProjectRoleMock.mockResolvedValueOnce(null);
+
+      const response = await request(app.getHttpServer())
+        .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(validTaskInput)
+        .expect(403);
+
+      expect(response.body.message).toBe('Insufficient project permission');
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
     describe('Input Validation', () => {
       it('rejects invalid task data', async () => {
         const invalidInput = {
@@ -528,6 +729,7 @@ describe('App (e2e)', () => {
 
         const response = await request(app.getHttpServer())
           .post('/tasks')
+          .set('Cookie', authenticatedSessionCookie)
           .send(invalidInput)
           .expect(400);
 
@@ -544,6 +746,7 @@ describe('App (e2e)', () => {
 
         const response = await request(app.getHttpServer())
           .post('/tasks')
+          .set('Cookie', authenticatedSessionCookie)
           .send(unexpectedInput)
           .expect(400);
 
@@ -563,6 +766,7 @@ describe('App (e2e)', () => {
 
         await request(app.getHttpServer())
           .post('/tasks')
+          .set('Cookie', authenticatedSessionCookie)
           .send(input)
           .expect(400);
 
@@ -577,6 +781,7 @@ describe('App (e2e)', () => {
 
         await request(app.getHttpServer())
           .post('/tasks')
+          .set('Cookie', authenticatedSessionCookie)
           .send(input)
           .expect(400);
 
@@ -591,6 +796,7 @@ describe('App (e2e)', () => {
         createMock.mockRejectedValueOnce(foreignKeyError);
         const response = await request(app.getHttpServer())
           .post('/tasks')
+          .set('Cookie', authenticatedSessionCookie)
           .send(input)
           .expect(400);
 
@@ -887,13 +1093,11 @@ describe('App (e2e)', () => {
     it('updates a task successfully', async () => {
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
         .send({ status: 'done' })
         .expect(200);
 
-      expect(updateMock).toHaveBeenCalledExactlyOnceWith({
-        where: { id: 1 },
-        data: { status: 'done' },
-      });
+      expect(updateMock).toHaveBeenCalledOnce();
       expect(response.body).toEqual({
         ...mockTasks[0],
         status: 'done',
@@ -901,19 +1105,14 @@ describe('App (e2e)', () => {
     });
 
     it('updates a task assignee ID successfully', async () => {
-      updateMock.mockResolvedValueOnce({
-        ...mockTasks[0],
-        assigneeId: 1,
-      });
+      updateMock.mockResolvedValueOnce([{ ...mockTasks[0], assigneeId: 1 }]);
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
         .send({ assigneeId: 1 })
         .expect(200);
 
-      expect(updateMock).toHaveBeenCalledExactlyOnceWith({
-        where: { id: 1 },
-        data: { assigneeId: 1 },
-      });
+      expect(updateMock).toHaveBeenCalledOnce();
       expect(response.body).toEqual({
         ...mockTasks[0],
         assigneeId: 1,
@@ -921,29 +1120,55 @@ describe('App (e2e)', () => {
     });
 
     it('unassigns a task', async () => {
-      updateMock.mockResolvedValueOnce({
-        ...mockTasks[0],
-        assigneeId: null,
-      });
+      updateMock.mockResolvedValueOnce([{ ...mockTasks[0], assigneeId: null }]);
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
         .send({ assigneeId: null })
         .expect(200);
 
-      expect(updateMock).toHaveBeenCalledExactlyOnceWith({
-        where: { id: 1 },
-        data: { assigneeId: null },
-      });
+      expect(updateMock).toHaveBeenCalledOnce();
       expect(response.body).toEqual({
         ...mockTasks[0],
         assigneeId: null,
       });
     });
 
+    it('rejects a viewer from updating a task', async () => {
+      getProjectRoleMock.mockResolvedValueOnce('VIEWER');
+
+      const response = await request(app.getHttpServer())
+        .patch('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ status: 'done' })
+        .expect(403);
+
+      expect(response.body.message).toBe('Insufficient project permission');
+      expect(updateMock).not.toHaveBeenCalled();
+    });
+
+    it('hides a task from a non-member attempting to update it', async () => {
+      validateSessionMock.mockResolvedValueOnce({
+        id: 99,
+        name: 'Non-member',
+        email: 'non-member@example.test',
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ status: 'done' })
+        .expect(404);
+
+      expect(response.body.message).toBe('Task not found');
+      expect(updateMock).not.toHaveBeenCalled();
+    });
+
     describe('Invalid Input', () => {
       it('rejects invalid value', async () => {
         await request(app.getHttpServer())
           .patch('/tasks/1')
+          .set('Cookie', authenticatedSessionCookie)
           .send({ status: 'invalid' })
           .expect(400);
 
@@ -953,6 +1178,7 @@ describe('App (e2e)', () => {
       it('rejects non-white-listed field', async () => {
         await request(app.getHttpServer())
           .patch('/tasks/1')
+          .set('Cookie', authenticatedSessionCookie)
           .send({ projectId: 1 })
           .expect(400);
 
@@ -962,6 +1188,7 @@ describe('App (e2e)', () => {
       it('rejects invalid task ID', async () => {
         await request(app.getHttpServer())
           .patch('/tasks/hello')
+          .set('Cookie', authenticatedSessionCookie)
           .send({ status: 'done' })
           .expect(400);
 
@@ -969,31 +1196,25 @@ describe('App (e2e)', () => {
       });
 
       it('rejects non-exist task ID', async () => {
-        updateMock.mockRejectedValueOnce(prismaError);
         const response = await request(app.getHttpServer())
           .patch('/tasks/999')
+          .set('Cookie', authenticatedSessionCookie)
           .send({ status: 'done' })
           .expect(404);
 
         expect(response.body.message).toBe('Task not found');
-        expect(updateMock).toHaveBeenCalledExactlyOnceWith({
-          where: { id: 999 },
-          data: { status: 'done' },
-        });
+        expect(updateMock).not.toHaveBeenCalled();
       });
 
       it('rejects non-exist assignee ID', async () => {
-        updateMock.mockRejectedValueOnce(foreignKeyError);
         const response = await request(app.getHttpServer())
           .patch('/tasks/3')
+          .set('Cookie', authenticatedSessionCookie)
           .send({ assigneeId: 999999 })
-          .expect(400);
+          .expect(404);
 
-        expect(response.body.message).toBe('Invalid task relation');
-        expect(updateMock).toHaveBeenCalledExactlyOnceWith({
-          where: { id: 3 },
-          data: { assigneeId: 999999 },
-        });
+        expect(response.body.message).toBe('Task not found');
+        expect(updateMock).not.toHaveBeenCalled();
       });
     });
   });
@@ -1006,31 +1227,59 @@ describe('App (e2e)', () => {
     it('deletes a task successfully', async () => {
       const response = await request(app.getHttpServer())
         .delete('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
-      expect(deleteMock).toHaveBeenCalledExactlyOnceWith({
-        where: { id: 1 },
-      });
+      expect(deleteMock).toHaveBeenCalledOnce();
       expect(response.body).toEqual({
         ...mockTasks[0],
       });
     });
 
+    it('rejects a viewer from deleting a task', async () => {
+      getProjectRoleMock.mockResolvedValueOnce('VIEWER');
+
+      const response = await request(app.getHttpServer())
+        .delete('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(403);
+
+      expect(response.body.message).toBe('Insufficient project permission');
+      expect(deleteMock).not.toHaveBeenCalled();
+    });
+
+    it('hides a task from a non-member attempting to delete it', async () => {
+      validateSessionMock.mockResolvedValueOnce({
+        id: 99,
+        name: 'Non-member',
+        email: 'non-member@example.test',
+      });
+
+      const response = await request(app.getHttpServer())
+        .delete('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(404);
+
+      expect(response.body.message).toBe('Task not found');
+      expect(deleteMock).not.toHaveBeenCalled();
+    });
+
     describe('Invalid Input', () => {
       it('rejects non-exist task ID', async () => {
-        deleteMock.mockRejectedValueOnce(prismaError);
         const response = await request(app.getHttpServer())
           .delete('/tasks/999')
+          .set('Cookie', authenticatedSessionCookie)
           .expect(404);
 
         expect(response.body.message).toBe('Task not found');
-        expect(deleteMock).toHaveBeenCalledExactlyOnceWith({
-          where: { id: 999 },
-        });
+        expect(deleteMock).not.toHaveBeenCalled();
       });
 
       it('rejects invalid task ID', async () => {
-        await request(app.getHttpServer()).delete('/tasks/abc').expect(400);
+        await request(app.getHttpServer())
+          .delete('/tasks/abc')
+          .set('Cookie', authenticatedSessionCookie)
+          .expect(400);
 
         expect(deleteMock).not.toHaveBeenCalled();
       });

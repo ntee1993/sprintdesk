@@ -12,22 +12,29 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ProjectRole {
+  EDITOR
+  VIEWER
+}
+
 model User {
-  id            Int       @id @default(autoincrement())
+  id            Int             @id @default(autoincrement())
   name          String
-  email         String    @unique
+  email         String          @unique
   passwordHash  String?
   projects      Project[]
   assignedTasks Task[]
   sessions      Session[]
+  memberships   ProjectMember[]
 }
 
 model Project {
-  id      Int    @id @default(autoincrement())
-  name    String
-  ownerId Int
-  owner   User   @relation(fields: [ownerId], references: [id])
-  tasks   Task[]
+  id          Int             @id @default(autoincrement())
+  name        String
+  ownerId     Int
+  owner       User            @relation(fields: [ownerId], references: [id])
+  tasks       Task[]
+  memberships ProjectMember[]
 }
 
 model Task {
@@ -51,4 +58,15 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model ProjectMember {
+  projectId Int
+  userId    Int
+  role      ProjectRole @default(VIEWER)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
 }

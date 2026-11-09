@@ -20,7 +20,7 @@ export type CreateTaskInput = {
 export class TasksService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(filters: ListTasksQueryDto = {}) {
+  findAll(filters: ListTasksQueryDto, userId: number) {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 10;
     const skip = (page - 1) * limit;
@@ -31,6 +31,14 @@ export class TasksService {
       where: {
         status: filters.status,
         priority: filters.priority,
+        project: {
+          is: {
+            OR: [
+              { ownerId: userId },
+              { memberships: { some: { userId } } },
+            ],
+          },
+        },
       },
       skip,
       take: limit,
@@ -40,9 +48,19 @@ export class TasksService {
     });
   }
 
-  async findOne(id: number) {
-    const task = await this.prisma.task.findUnique({
-      where: { id },
+  async findOne(id: number, userId: number) {
+    const task = await this.prisma.task.findFirst({
+      where: {
+        id,
+        project: {
+          is: {
+            OR: [
+              { ownerId: userId },
+              { memberships: { some: { userId } } },
+            ],
+          },
+        },
+      },
     });
     if (task === null) {
       throw new NotFoundException('Task not found');
@@ -67,17 +85,36 @@ export class TasksService {
     }
   }
 
-  async update(id: number, changes: UpdateTaskDto) {
+  async update(id: number, changes: UpdateTaskDto, userId: number) {
     try {
-      return await this.prisma.task.update({
-        where: { id },
+      const tasks = await this.prisma.task.updateManyAndReturn({
+        where: {
+          id,
+          project: {
+            is: {
+              OR: [
+                { ownerId: userId },
+                {
+                  memberships: {
+                    some: { userId, role: 'EDITOR' },
+                  },
+                },
+              ],
+            },
+          },
+        },
         data: changes,
       });
+
+      const task = tasks[0];
+
+      if (task === undefined) {
+        throw new NotFoundException('Task not found');
+      }
+
+      return task;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2025') {
-          throw new NotFoundException('Task not found');
-        }
         if (error.code === 'P2003') {
           throw new BadRequestException('Invalid task relation');
         }
@@ -87,18 +124,34 @@ export class TasksService {
     }
   }
 
-  async remove(id: number) {
-    try {
-      return await this.prisma.task.delete({ where: { id } });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
-        throw new NotFoundException('Task not found');
-      }
+  async remove(id: number, userId: number) {
+    const where: Prisma.TaskWhereInput = {
+      id,
+      project: {
+        is: {
+          OR: [
+            { ownerId: userId },
+            {
+              memberships: {
+                some: { userId, role: 'EDITOR' },
+              },
+            },
+          ],
+        },
+      },
+    };
+    const task = await this.prisma.task.findFirst({ where });
 
-      throw error;
+    if (task === null) {
+      throw new NotFoundException('Task not found');
     }
+
+    const { count } = await this.prisma.task.deleteMany({ where });
+
+    if (count === 0) {
+      throw new NotFoundException('Task not found');
+    }
+
+    return task;
   }
 }

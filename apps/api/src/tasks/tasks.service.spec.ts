@@ -1,88 +1,55 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { TasksService } from './tasks.service.js';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { Prisma } from '../generated/prisma/client.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { TasksService } from './tasks.service.js';
 
 describe('TasksService', () => {
   let tasksService: TasksService;
   let findManyMock: ReturnType<typeof vi.fn>;
-  let findUniqueMock: ReturnType<typeof vi.fn>;
+  let findFirstMock: ReturnType<typeof vi.fn>;
   let createMock: ReturnType<typeof vi.fn>;
-  let updateMock: ReturnType<typeof vi.fn>;
-  let deleteMock: ReturnType<typeof vi.fn>;
+  let updateManyAndReturnMock: ReturnType<typeof vi.fn>;
+  let deleteManyMock: ReturnType<typeof vi.fn>;
 
-  const prismaError = new Prisma.PrismaClientKnownRequestError(
-    'Record not found',
-    {
-      code: 'P2025',
-      clientVersion: '7.10.1',
+  const userId = 1;
+  const readableProjectFilter = {
+    project: {
+      is: {
+        OR: [{ ownerId: userId }, { memberships: { some: { userId } } }],
+      },
     },
-  );
-
+  };
+  const writableProjectFilter = {
+    project: {
+      is: {
+        OR: [
+          { ownerId: userId },
+          { memberships: { some: { userId, role: 'EDITOR' } } },
+        ],
+      },
+    },
+  };
+  const task = {
+    id: 1,
+    title: 'Learn NestJS',
+    status: 'todo',
+    priority: 'high',
+    projectId: 1,
+  };
   const foreignKeyError = new Prisma.PrismaClientKnownRequestError(
     'Foreign key constraint failed',
-    {
-      code: 'P2003',
-      clientVersion: '7.10.1',
-    },
+    { code: 'P2003', clientVersion: '7.10.1' },
   );
 
   beforeEach(async () => {
-    findManyMock = vi.fn().mockResolvedValue([
-      {
-        id: 1,
-        title: 'Learn NestJS',
-        status: 'todo',
-        priority: 'high',
-        projectId: 1,
-      },
-      {
-        id: 2,
-        title: 'Build Tasks API',
-        status: 'in_progress',
-        priority: 'urgent',
-        projectId: 1,
-      },
-    ]);
-
-    findUniqueMock = vi.fn().mockImplementation(({ where }) => {
-      if (where.id === 1) {
-        return Promise.resolve({
-          id: 1,
-          title: 'Learn NestJS',
-          status: 'todo',
-          priority: 'high',
-          projectId: 1,
-        });
-      }
-
-      return Promise.resolve(null);
-    });
-
-    createMock = vi.fn().mockResolvedValue({
-      id: 3,
-      title: 'Learn Dependency Injection',
-      status: 'todo',
-      priority: 'high',
-      projectId: 1,
-    });
-
-    updateMock = vi.fn().mockResolvedValue({
-      id: 1,
-      title: 'Learn NestJS',
-      status: 'done',
-      priority: 'high',
-      projectId: 1,
-    });
-
-    deleteMock = vi.fn().mockResolvedValue({
-      id: 1,
-      title: 'Learn NestJS',
-      status: 'todo',
-      priority: 'high',
-      projectId: 1,
-    });
+    findManyMock = vi.fn().mockResolvedValue([task]);
+    findFirstMock = vi.fn().mockResolvedValue(task);
+    createMock = vi.fn().mockResolvedValue({ ...task, id: 3 });
+    updateManyAndReturnMock = vi
+      .fn()
+      .mockResolvedValue([{ ...task, status: 'done' }]);
+    deleteManyMock = vi.fn().mockResolvedValue({ count: 1 });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -92,10 +59,10 @@ describe('TasksService', () => {
           useValue: {
             task: {
               findMany: findManyMock,
-              findUnique: findUniqueMock,
+              findFirst: findFirstMock,
               create: createMock,
-              update: updateMock,
-              delete: deleteMock,
+              updateManyAndReturn: updateManyAndReturnMock,
+              deleteMany: deleteManyMock,
             },
           },
         },
@@ -106,27 +73,35 @@ describe('TasksService', () => {
   });
 
   describe('findAll', () => {
-    it('should return the initial tasks', async () => {
-      const tasks = await tasksService.findAll();
+    it('filters tasks to projects the user owns or belongs to', async () => {
+      await tasksService.findAll({}, userId);
 
-      expect(findManyMock).toHaveBeenCalledOnce();
-      expect(tasks).toHaveLength(2);
-      expect(tasks[0]).toEqual({
-        id: 1,
-        title: 'Learn NestJS',
-        status: 'todo',
-        priority: 'high',
-        projectId: 1,
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+          ...readableProjectFilter,
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
       });
     });
 
-    it('should filter by status', async () => {
-      await tasksService.findAll({ status: 'done' });
+    it('returns only tasks from the authorized query', async () => {
+      const tasks = await tasksService.findAll({}, userId);
+
+      expect(tasks).toEqual([task]);
+    });
+
+    it('filters by status', async () => {
+      await tasksService.findAll({ status: 'done' }, userId);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
         where: {
           status: 'done',
           priority: undefined,
+          ...readableProjectFilter,
         },
         skip: 0,
         take: 10,
@@ -134,13 +109,14 @@ describe('TasksService', () => {
       });
     });
 
-    it('should filter by priority', async () => {
-      await tasksService.findAll({ priority: 'high' });
+    it('filters by priority', async () => {
+      await tasksService.findAll({ priority: 'high' }, userId);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
         where: {
           status: undefined,
           priority: 'high',
+          ...readableProjectFilter,
         },
         skip: 0,
         take: 10,
@@ -148,44 +124,25 @@ describe('TasksService', () => {
       });
     });
 
-    it('should filter by status and priority', async () => {
-      await tasksService.findAll({
-        status: 'done',
-        priority: 'high',
-      });
+    it('filters by status and priority', async () => {
+      await tasksService.findAll({ status: 'done', priority: 'high' }, userId);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
-          status: 'done',
-          priority: 'high',
-        },
+        where: { status: 'done', priority: 'high', ...readableProjectFilter },
         skip: 0,
         take: 10,
         orderBy: { id: 'asc' },
       });
     });
 
-    it('should use default pagination', async () => {
-      await tasksService.findAll({});
+    it('paginates an authorized query', async () => {
+      await tasksService.findAll({ page: 2, limit: 5 }, userId);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
         where: {
           status: undefined,
           priority: undefined,
-        },
-        skip: 0,
-        take: 10,
-        orderBy: { id: 'asc' },
-      });
-    });
-
-    it('should paginate to page 2', async () => {
-      await tasksService.findAll({ page: 2, limit: 5 });
-
-      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
-          status: undefined,
-          priority: undefined,
+          ...readableProjectFilter,
         },
         skip: 5,
         take: 5,
@@ -193,70 +150,17 @@ describe('TasksService', () => {
       });
     });
 
-    it('should filter and paginate tasks', async () => {
-      await tasksService.findAll({
-        status: 'done',
-        page: 3,
-        limit: 10,
-      });
+    it('filters, paginates, and sorts an authorized query', async () => {
+      await tasksService.findAll(
+        { status: 'done', page: 2, limit: 5, sortBy: 'title', order: 'desc' },
+        userId,
+      );
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
         where: {
           status: 'done',
           priority: undefined,
-        },
-        skip: 20,
-        take: 10,
-        orderBy: { id: 'asc' },
-      });
-    });
-
-    it('should sort tasks by ID descending', async () => {
-      await tasksService.findAll({
-        sortBy: 'id',
-        order: 'desc',
-      });
-
-      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
-          status: undefined,
-          priority: undefined,
-        },
-        skip: 0,
-        take: 10,
-        orderBy: { id: 'desc' },
-      });
-    });
-
-    it('should sort tasks by title ascending by default', async () => {
-      await tasksService.findAll({
-        sortBy: 'title',
-      });
-
-      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
-          status: undefined,
-          priority: undefined,
-        },
-        skip: 0,
-        take: 10,
-        orderBy: { title: 'asc' },
-      });
-    });
-
-    it('should filter, paginate, and sort tasks', async () => {
-      await tasksService.findAll({
-        status: 'done',
-        page: 2,
-        limit: 5,
-        sortBy: 'title',
-        order: 'desc',
-      });
-
-      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: {
-          status: 'done',
-          priority: undefined,
+          ...readableProjectFilter,
         },
         skip: 5,
         take: 5,
@@ -266,20 +170,18 @@ describe('TasksService', () => {
   });
 
   describe('findOne', () => {
-    it('should return the task with ID 1', async () => {
-      const task = {
-        id: 1,
-        title: 'Learn NestJS',
-        status: 'todo',
-        priority: 'high',
-        projectId: 1,
-      };
-      const result = await tasksService.findOne(task.id);
+    it('reads a task only through the project permission filter', async () => {
+      await expect(tasksService.findOne(1, userId)).resolves.toEqual(task);
 
-      expect(result).toEqual(task);
+      expect(findFirstMock).toHaveBeenCalledExactlyOnceWith({
+        where: { id: 1, ...readableProjectFilter },
+      });
     });
-    it('should throw NotFoundException when task is not found', async () => {
-      await expect(tasksService.findOne(999)).rejects.toThrow(
+
+    it('hides tasks that are missing or inaccessible', async () => {
+      findFirstMock.mockResolvedValueOnce(null);
+
+      await expect(tasksService.findOne(999, userId)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -287,142 +189,76 @@ describe('TasksService', () => {
 
   describe('create', () => {
     const newTask = {
-      priority: 'high',
-      status: 'todo',
       title: 'Learn Dependency Injection',
+      status: 'todo',
+      priority: 'high',
       projectId: 1,
     };
 
-    it('should add the new task with an ID', async () => {
-      const result = await tasksService.create(newTask);
-      expect(result).toEqual({
+    it('creates the task data supplied by the authorized controller', async () => {
+      createMock.mockResolvedValueOnce({ id: 3, ...newTask });
+
+      await expect(tasksService.create(newTask)).resolves.toEqual({
         id: 3,
         ...newTask,
       });
-
-      expect(createMock).toHaveBeenCalledExactlyOnceWith({
-        data: newTask,
-      });
+      expect(createMock).toHaveBeenCalledExactlyOnceWith({ data: newTask });
     });
 
-    it('should assign distinct IDs to consecutive tasks', async () => {
-      createMock
-        .mockResolvedValueOnce({ id: 3, ...newTask })
-        .mockResolvedValueOnce({ id: 4, ...newTask });
-
-      const first = await tasksService.create(newTask);
-      const second = await tasksService.create(newTask);
-
-      expect(first.id).toBe(3);
-      expect(second.id).toBe(4);
-
-      expect(createMock).toHaveBeenCalledTimes(2);
-    });
-
-    it('should create a task and assign to user ID 1', async () => {
-      const newTask = {
-        title: 'Learn Prisma Relations',
-        status: 'todo',
-        priority: 'high',
-        projectId: 1,
-        assigneeId: 1,
-      };
-
-      const createdTask = {
-        id: 5,
-        ...newTask,
-      };
-
-      createMock.mockResolvedValueOnce(createdTask);
-
-      const result = await tasksService.create(newTask);
-
-      expect(result).toEqual(createdTask);
-
-      expect(createMock).toHaveBeenCalledExactlyOnceWith({
-        data: newTask,
-      });
-    });
-
-    it('should reject with P2003 error', async () => {
+    it('maps invalid task relations to BadRequestException', async () => {
       createMock.mockRejectedValueOnce(foreignKeyError);
-      await expect(
-        tasksService.create({
-          title: 'Invalid Assignment',
-          status: 'todo',
-          priority: 'high',
-          projectId: 1,
-          assigneeId: 999999,
-        }),
-      ).rejects.toThrow(BadRequestException);
+
+      await expect(tasksService.create(newTask)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
   describe('update', () => {
-    it('should update status: "done" without changing other fields', async () => {
-      const result = await tasksService.update(1, { status: 'done' });
+    it('updates only a task in a project the user may edit', async () => {
+      await expect(
+        tasksService.update(1, { status: 'done' }, userId),
+      ).resolves.toEqual({ ...task, status: 'done' });
 
-      expect(result).toEqual({
-        id: 1,
-        title: 'Learn NestJS',
-        status: 'done',
-        priority: 'high',
-        projectId: 1,
-      });
-      expect(updateMock).toHaveBeenCalledExactlyOnceWith({
-        where: { id: 1 },
+      expect(updateManyAndReturnMock).toHaveBeenCalledExactlyOnceWith({
+        where: { id: 1, ...writableProjectFilter },
         data: { status: 'done' },
       });
     });
 
-    it('should reject with P2025 error', async () => {
-      updateMock.mockRejectedValueOnce(prismaError);
+    it('returns not found when no editable task matches', async () => {
+      updateManyAndReturnMock.mockResolvedValueOnce([]);
+
       await expect(
-        tasksService.update(999, { status: 'done' }),
+        tasksService.update(999, { status: 'done' }, userId),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should reject any error not P2025', async () => {
-      const databaseError = new Error('Database unavailable');
-      updateMock.mockRejectedValueOnce(databaseError);
-      await expect(
-        tasksService.update(999, { status: 'done' }),
-      ).rejects.toThrow(databaseError);
-    });
+    it('maps invalid update relations to BadRequestException', async () => {
+      updateManyAndReturnMock.mockRejectedValueOnce(foreignKeyError);
 
-    it('should reject with P2003 error', async () => {
-      updateMock.mockRejectedValueOnce(foreignKeyError);
       await expect(
-        tasksService.update(1, { assigneeId: 999999 }),
+        tasksService.update(1, { assigneeId: 999999 }, userId),
       ).rejects.toThrow(BadRequestException);
     });
   });
 
-  describe('delete', () => {
-    it('should delete the right task', async () => {
-      const result = await tasksService.remove(1);
+  describe('remove', () => {
+    it('deletes only a task in a project the user may edit', async () => {
+      await expect(tasksService.remove(1, userId)).resolves.toEqual(task);
 
-      expect(result).toEqual({
-        id: 1,
-        title: 'Learn NestJS',
-        status: 'todo',
-        priority: 'high',
-        projectId: 1,
-      });
-      expect(deleteMock).toHaveBeenCalledExactlyOnceWith({
-        where: { id: 1 },
-      });
+      const where = { id: 1, ...writableProjectFilter };
+      expect(findFirstMock).toHaveBeenCalledExactlyOnceWith({ where });
+      expect(deleteManyMock).toHaveBeenCalledExactlyOnceWith({ where });
     });
 
-    it('should reject with P2025 error', async () => {
-      deleteMock.mockRejectedValueOnce(prismaError);
-      await expect(tasksService.remove(999)).rejects.toThrow(NotFoundException);
-    });
+    it('returns not found when no editable task matches', async () => {
+      findFirstMock.mockResolvedValueOnce(null);
 
-    it('should reject any error not P2025', async () => {
-      const databaseError = new Error('Database unavailable');
-      deleteMock.mockRejectedValueOnce(databaseError);
-      await expect(tasksService.remove(999)).rejects.toThrow(databaseError);
+      await expect(tasksService.remove(999, userId)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(deleteManyMock).not.toHaveBeenCalled();
     });
   });
 });

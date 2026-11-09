@@ -340,4 +340,86 @@ describe('Registration Integration', () => {
       });
     }
   });
+
+  it('prevents a non-member from reading or updating another project task', async () => {
+    if (!app || !prisma) {
+      throw new Error('Application was not initialized');
+    }
+
+    const ownerEmail = `project-owner-${randomUUID()}@example.test`;
+    const outsiderEmail = `project-outsider-${randomUUID()}@example.test`;
+    const password = 'MySecurePassword123!';
+    let projectId: number | undefined;
+
+    try {
+      const owner = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ name: 'Project Owner', email: ownerEmail, password })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ name: 'Project Outsider', email: outsiderEmail, password })
+        .expect(201);
+
+      const project = await prisma.project.create({
+        data: {
+          name: 'Private Integration Project',
+          ownerId: owner.body.id,
+        },
+      });
+      projectId = project.id;
+
+      const task = await prisma.task.create({
+        data: {
+          title: 'Private Task',
+          status: 'todo',
+          priority: 'high',
+          projectId,
+        },
+      });
+
+      const login = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: outsiderEmail, password })
+        .expect(200);
+      const setCookie = login.headers['set-cookie']?.[0];
+
+      if (!setCookie) {
+        throw new Error('Login response did not set a session cookie');
+      }
+
+      const sessionCookie = setCookie.split(';')[0];
+
+      await request(app.getHttpServer())
+        .get(`/tasks/${task.id}`)
+        .set('Cookie', sessionCookie)
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .patch(`/tasks/${task.id}`)
+        .set('Cookie', sessionCookie)
+        .send({ status: 'done' })
+        .expect(404);
+
+      const savedTask = await prisma.task.findUnique({
+        where: { id: task.id },
+      });
+
+      expect(savedTask).toMatchObject({
+        id: task.id,
+        title: 'Private Task',
+        status: 'todo',
+      });
+    } finally {
+      if (projectId !== undefined) {
+        await prisma.task.deleteMany({ where: { projectId } });
+        await prisma.project.deleteMany({ where: { id: projectId } });
+      }
+
+      await prisma.user.deleteMany({
+        where: { email: { in: [ownerEmail, outsiderEmail] } },
+      });
+    }
+  });
 });
