@@ -22,7 +22,9 @@ describe('Task Store - fetchTasks', () => {
     const store = useTaskStore()
     await store.fetchTasks()
 
-    expect(mockFetch).toHaveBeenCalledExactlyOnceWith('http://localhost:3000/tasks')
+    expect(mockFetch).toHaveBeenCalledExactlyOnceWith('http://localhost:3000/tasks', {
+      credentials: 'include',
+    })
     expect(store.tasks).toEqual(mockTasks)
     expect(store.isLoading).toBe(false)
     expect(store.fetchError).toBeNull()
@@ -40,7 +42,9 @@ describe('Task Store - fetchTasks', () => {
     const initialTasks = store.tasks.map((task) => ({ ...task }))
     await store.fetchTasks()
 
-    expect(mockFetch).toHaveBeenCalledExactlyOnceWith('http://localhost:3000/tasks')
+    expect(mockFetch).toHaveBeenCalledExactlyOnceWith('http://localhost:3000/tasks', {
+      credentials: 'include',
+    })
     expect(store.fetchError).toEqual('Failed to load tasks')
     expect(store.isLoading).toBe(false)
     expect(store.tasks).toEqual(initialTasks)
@@ -55,7 +59,9 @@ describe('Task Store - fetchTasks', () => {
     const initialTasks = store.tasks.map((task) => ({ ...task }))
     await store.fetchTasks()
 
-    expect(mockFetch).toHaveBeenCalledExactlyOnceWith('http://localhost:3000/tasks')
+    expect(mockFetch).toHaveBeenCalledExactlyOnceWith('http://localhost:3000/tasks', {
+      credentials: 'include',
+    })
     expect(store.fetchError).toEqual('Failed to load tasks')
     expect(store.isLoading).toBe(false)
     expect(store.tasks).toEqual(initialTasks)

@@ -3,11 +3,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useTaskStore = defineStore('tasks', () => {
-  const tasks = ref<Task[]>([
-    { id: 1, title: 'Create SprintDesk', status: 'todo', priority: 'high' },
-    { id: 2, title: 'Learn Vue', status: 'in_progress', priority: 'medium', assignee: 'Nashi' },
-    { id: 3, title: 'Prepare for interview', status: 'done', priority: 'urgent' },
-  ])
+  const tasks = ref<Task[]>([])
 
   const isLoading = ref(false)
   const fetchError = ref<string | null>(null)
@@ -16,7 +12,7 @@ export const useTaskStore = defineStore('tasks', () => {
     isLoading.value = true
     fetchError.value = null
     try {
-      const response = await fetch('http://localhost:3000/tasks')
+      const response = await fetch('http://localhost:3000/tasks', { credentials: 'include' })
       if (!response.ok) {
         throw new Error('Failed to fetch tasks')
       }
@@ -60,5 +56,10 @@ export const useTaskStore = defineStore('tasks', () => {
     tasks.value = updatedTask
   }
 
-  return { fetchTasks, isLoading, fetchError, tasks, addTask, deleteTask, updateTask }
+  function clearTasks() {
+    tasks.value = []
+    fetchError.value = null
+  }
+
+  return { fetchTasks, isLoading, fetchError, tasks, addTask, deleteTask, updateTask, clearTasks }
 })
