@@ -99,6 +99,8 @@ describe('App (e2e)', () => {
   let createMock: ReturnType<typeof vi.fn>;
   let updateMock: ReturnType<typeof vi.fn>;
   let deleteMock: ReturnType<typeof vi.fn>;
+  let createProjectMock: ReturnType<typeof vi.fn>;
+  let findProjectsMock: ReturnType<typeof vi.fn>;
   let registerMock: ReturnType<typeof vi.fn>;
   let loginWithSessionMock: ReturnType<typeof vi.fn>;
   let validateSessionMock: ReturnType<typeof vi.fn>;
@@ -115,6 +117,12 @@ describe('App (e2e)', () => {
     validateSessionMock = vi.fn();
     revokeSessionMock = vi.fn();
     getProjectRoleMock = vi.fn();
+    createProjectMock = vi.fn().mockResolvedValue({
+      id: 1,
+      name: 'My First Project',
+      ownerId: 1,
+    });
+    findProjectsMock = vi.fn().mockResolvedValue([]);
     validateSessionMock.mockResolvedValue({
       id: 1,
       name: 'Tester',
@@ -171,6 +179,10 @@ describe('App (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue({
+        project: {
+          create: createProjectMock,
+          findMany: findProjectsMock,
+        },
         task: {
           findMany: findManyMock,
 
@@ -240,6 +252,64 @@ describe('App (e2e)', () => {
         .get('/health')
         .expect(200)
         .expect({ status: 'ok' });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Projects
+  // ---------------------------------------------------------------------------
+
+  describe('/projects', () => {
+    it('creates a project using the owner ID from the session', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/projects')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ name: 'My First Project' })
+        .expect(201);
+
+      expect(createProjectMock).toHaveBeenCalledExactlyOnceWith({
+        data: { name: 'My First Project', ownerId: 1 },
+      });
+      expect(response.body).toEqual({
+        id: 1,
+        name: 'My First Project',
+        ownerId: 1,
+      });
+    });
+
+    it('rejects an owner ID supplied in the request body', async () => {
+      await request(app.getHttpServer())
+        .post('/projects')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ name: 'My First Project', ownerId: 99 })
+        .expect(400);
+
+      expect(createProjectMock).not.toHaveBeenCalled();
+    });
+
+    it('queries projects owned by or shared with the session user', async () => {
+      await request(app.getHttpServer())
+        .get('/projects')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(200);
+
+      expect(findProjectsMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          OR: [{ ownerId: 1 }, { memberships: { some: { userId: 1 } } }],
+        },
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('rejects project requests without a session', async () => {
+      await request(app.getHttpServer()).get('/projects').expect(401);
+      await request(app.getHttpServer())
+        .post('/projects')
+        .send({ name: 'My First Project' })
+        .expect(401);
+
+      expect(findProjectsMock).not.toHaveBeenCalled();
+      expect(createProjectMock).not.toHaveBeenCalled();
     });
   });
 
