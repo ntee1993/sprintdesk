@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
+import { ProjectAuthorizationService } from '../auth/project-authorization.service.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { ProjectsController } from './projects.controller.js';
 import { ProjectsService } from './projects.service.js';
@@ -7,6 +8,6 @@ import { ProjectsService } from './projects.service.js';
 @Module({
   imports: [AuthModule, PrismaModule],
   controllers: [ProjectsController],
-  providers: [ProjectsService],
+  providers: [ProjectsService, ProjectAuthorizationService],
 })
 export class ProjectsModule {}

@@ -101,6 +101,8 @@ describe('App (e2e)', () => {
   let deleteMock: ReturnType<typeof vi.fn>;
   let createProjectMock: ReturnType<typeof vi.fn>;
   let findProjectsMock: ReturnType<typeof vi.fn>;
+  let findUserMock: ReturnType<typeof vi.fn>;
+  let createMemberMock: ReturnType<typeof vi.fn>;
   let registerMock: ReturnType<typeof vi.fn>;
   let loginWithSessionMock: ReturnType<typeof vi.fn>;
   let validateSessionMock: ReturnType<typeof vi.fn>;
@@ -123,6 +125,12 @@ describe('App (e2e)', () => {
       ownerId: 1,
     });
     findProjectsMock = vi.fn().mockResolvedValue([]);
+    findUserMock = vi.fn().mockResolvedValue({ id: 2 });
+    createMemberMock = vi.fn().mockResolvedValue({
+      projectId: 1,
+      userId: 2,
+      role: 'EDITOR',
+    });
     validateSessionMock.mockResolvedValue({
       id: 1,
       name: 'Tester',
@@ -185,6 +193,8 @@ describe('App (e2e)', () => {
           create: createProjectMock,
           findMany: findProjectsMock,
         },
+        user: { findUnique: findUserMock },
+        projectMember: { create: createMemberMock },
         task: {
           findMany: findManyMock,
 
@@ -312,6 +322,109 @@ describe('App (e2e)', () => {
 
       expect(findProjectsMock).not.toHaveBeenCalled();
       expect(createProjectMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /projects/:projectId/members
+  // ---------------------------------------------------------------------------
+
+  describe('POST /projects/:projectId/members', () => {
+    const input = { email: 'bob@example.com', role: 'EDITOR' };
+
+    it('allows an owner to add an editor', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/projects/1/members')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(input)
+        .expect(201);
+
+      expect(getProjectRoleMock).toHaveBeenCalledExactlyOnceWith(1, 1);
+      expect(findUserMock).toHaveBeenCalledExactlyOnceWith({
+        where: { email: input.email },
+        select: { id: true },
+      });
+      expect(createMemberMock).toHaveBeenCalledExactlyOnceWith({
+        data: { projectId: 1, userId: 2, role: 'EDITOR' },
+      });
+      expect(response.body).toEqual({ projectId: 1, userId: 2, role: 'EDITOR' });
+    });
+
+    it('rejects an editor attempting to add a member', async () => {
+      getProjectRoleMock.mockResolvedValueOnce('EDITOR');
+
+      await request(app.getHttpServer())
+        .post('/projects/1/members')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(input)
+        .expect(403);
+
+      expect(findUserMock).not.toHaveBeenCalled();
+      expect(createMemberMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the email is not registered', async () => {
+      findUserMock.mockResolvedValueOnce(null);
+
+      await request(app.getHttpServer())
+        .post('/projects/1/members')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(input)
+        .expect(404);
+
+      expect(createMemberMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when the user is already a member', async () => {
+      createMemberMock.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '7.10.1',
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .post('/projects/1/members')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(input)
+        .expect(409);
+    });
+
+    it('rejects requests without a session', async () => {
+      await request(app.getHttpServer())
+        .post('/projects/1/members')
+        .send(input)
+        .expect(401);
+
+      expect(getProjectRoleMock).not.toHaveBeenCalled();
+      expect(findUserMock).not.toHaveBeenCalled();
+      expect(createMemberMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid project IDs and request bodies', async () => {
+      for (const projectId of ['abc', '0', '-1']) {
+        await request(app.getHttpServer())
+          .post(`/projects/${projectId}/members`)
+          .set('Cookie', authenticatedSessionCookie)
+          .send(input)
+          .expect(400);
+      }
+
+      for (const body of [
+        { ...input, email: 'invalid-email' },
+        { ...input, role: 'OWNER' },
+        { ...input, extra: true },
+      ]) {
+        await request(app.getHttpServer())
+          .post('/projects/1/members')
+          .set('Cookie', authenticatedSessionCookie)
+          .send(body)
+          .expect(400);
+      }
+
+      expect(getProjectRoleMock).not.toHaveBeenCalled();
+      expect(findUserMock).not.toHaveBeenCalled();
+      expect(createMemberMock).not.toHaveBeenCalled();
     });
   });
 
