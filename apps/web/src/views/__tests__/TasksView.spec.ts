@@ -1,11 +1,33 @@
 // @vitest-environment jsdom
 import { createPinia } from 'pinia'
-import { mount } from '@vue/test-utils'
-import { describe, it, expect } from 'vitest'
-import TasksView from '@/views/TasksView.vue'
-import { useTaskStore } from '@/stores/task'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
+import TasksView from '../TasksView.vue'
+import { useTaskStore } from '../../stores/task'
 
 describe('TasksView', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, options?: RequestInit) =>
+        Promise.resolve({
+          ok: true,
+          json: async () => {
+            if (url.endsWith('/projects')) return [{ id: 1, name: 'Project', ownerId: 1 }]
+            if (options?.method === 'POST') {
+              return { id: 42, ...JSON.parse(options.body as string) }
+            }
+            return []
+          },
+        }),
+      ),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('rejects a task with an empty title', async () => {
     const pinia = createPinia()
     const wrapper = mount(TasksView, {
@@ -14,6 +36,7 @@ describe('TasksView', () => {
       },
     })
     const taskStore = useTaskStore(pinia)
+    await flushPromises()
     const initialCount = taskStore.tasks.length
 
     await wrapper.get('#task-title').setValue('   ')
@@ -31,6 +54,7 @@ describe('TasksView', () => {
       },
     })
     const taskStore = useTaskStore(pinia)
+    await flushPromises()
     const initialCount = taskStore.tasks.length
 
     await wrapper.get('#task-title').setValue('  Write Unit Tests  ')
@@ -38,12 +62,26 @@ describe('TasksView', () => {
     await wrapper.get('#task-priority').setValue('urgent')
     await wrapper.get('form').trigger('submit')
 
+    await flushPromises()
     expect(taskStore.tasks.length).toBe(initialCount + 1)
 
     expect(taskStore.tasks.at(-1)).toMatchObject({
+      id: 42,
       title: 'Write Unit Tests',
       status: 'in_progress',
       priority: 'urgent',
+      projectId: 1,
+    })
+    expect(fetch).toHaveBeenCalledWith('http://localhost:3000/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        title: 'Write Unit Tests',
+        status: 'in_progress',
+        priority: 'urgent',
+        projectId: 1,
+      }),
     })
 
     const titleInput = wrapper.get('#task-title').element as HTMLInputElement
@@ -58,6 +96,7 @@ describe('TasksView', () => {
       },
     })
     const taskStore = useTaskStore(pinia)
+    await flushPromises()
     const initialCount = taskStore.tasks.length
 
     await wrapper.get('#task-title').setValue('   ')
@@ -68,6 +107,7 @@ describe('TasksView', () => {
     expect(wrapper.find('#task-title-error').exists()).toBe(false)
 
     await wrapper.get('form').trigger('submit')
+    await flushPromises()
     expect(taskStore.tasks.length).toBe(initialCount + 1)
     expect(taskStore.tasks.at(-1)?.title).toBe('Fix Validation')
   })

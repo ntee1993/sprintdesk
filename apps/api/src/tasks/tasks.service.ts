@@ -31,6 +31,7 @@ export class TasksService {
       where: {
         status: filters.status,
         priority: filters.priority,
+        projectId: filters.projectId,
         project: {
           is: {
             OR: [

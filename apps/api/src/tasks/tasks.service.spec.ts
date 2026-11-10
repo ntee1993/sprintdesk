@@ -80,6 +80,7 @@ describe('TasksService', () => {
         where: {
           status: undefined,
           priority: undefined,
+          projectId: undefined,
           ...readableProjectFilter,
         },
         skip: 0,
@@ -101,6 +102,7 @@ describe('TasksService', () => {
         where: {
           status: 'done',
           priority: undefined,
+          projectId: undefined,
           ...readableProjectFilter,
         },
         skip: 0,
@@ -116,6 +118,7 @@ describe('TasksService', () => {
         where: {
           status: undefined,
           priority: 'high',
+          projectId: undefined,
           ...readableProjectFilter,
         },
         skip: 0,
@@ -128,7 +131,12 @@ describe('TasksService', () => {
       await tasksService.findAll({ status: 'done', priority: 'high' }, userId);
 
       expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
-        where: { status: 'done', priority: 'high', ...readableProjectFilter },
+        where: {
+          status: 'done',
+          priority: 'high',
+          projectId: undefined,
+          ...readableProjectFilter,
+        },
         skip: 0,
         take: 10,
         orderBy: { id: 'asc' },
@@ -142,6 +150,7 @@ describe('TasksService', () => {
         where: {
           status: undefined,
           priority: undefined,
+          projectId: undefined,
           ...readableProjectFilter,
         },
         skip: 5,
@@ -160,6 +169,7 @@ describe('TasksService', () => {
         where: {
           status: 'done',
           priority: undefined,
+          projectId: undefined,
           ...readableProjectFilter,
         },
         skip: 5,

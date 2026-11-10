@@ -139,6 +139,8 @@ describe('App (e2e)', () => {
               (where?.status === undefined || task.status === where.status) &&
               (where?.priority === undefined ||
                 task.priority === where.priority) &&
+              (where?.projectId === undefined ||
+                task.projectId === where.projectId) &&
               matchesProjectPermission(task, where?.project),
           );
 
@@ -344,6 +346,7 @@ describe('App (e2e)', () => {
         where: {
           status: undefined,
           priority: undefined,
+          projectId: undefined,
           project: {
             is: {
               OR: [{ ownerId: 99 }, { memberships: { some: { userId: 99 } } }],
@@ -362,6 +365,69 @@ describe('App (e2e)', () => {
         .set('Cookie', authenticatedSessionCookie)
         .expect(200)
         .expect(mockTasks);
+    });
+
+    it('returns tasks belonging to the requested project', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/tasks?projectId=1')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(200);
+
+      expect(response.body).toEqual([mockTasks[0]]);
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+          projectId: 1,
+          project: {
+            is: {
+              OR: [{ ownerId: 1 }, { memberships: { some: { userId: 1 } } }],
+            },
+          },
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
+    });
+
+    it('rejects a non-numeric project ID', async () => {
+      await request(app.getHttpServer())
+        .get('/tasks?projectId=abc')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(400);
+
+      expect(findManyMock).not.toHaveBeenCalled();
+    });
+
+    it('returns no tasks for a project the user cannot access', async () => {
+      validateSessionMock.mockResolvedValueOnce({
+        id: 99,
+        name: 'Non-member',
+        email: 'non-member@example.test',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/tasks?projectId=1')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(200);
+
+      expect(response.body).toEqual([]);
+      expect(findManyMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          status: undefined,
+          priority: undefined,
+          projectId: 1,
+          project: {
+            is: {
+              OR: [{ ownerId: 99 }, { memberships: { some: { userId: 99 } } }],
+            },
+          },
+        },
+        skip: 0,
+        take: 10,
+        orderBy: { id: 'asc' },
+      });
     });
 
     it('should filter tasks by status', async () => {

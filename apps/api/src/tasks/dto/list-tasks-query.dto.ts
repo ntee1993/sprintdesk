@@ -14,6 +14,12 @@ export class ListTasksQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  projectId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   page?: number;
 
   @IsOptional()

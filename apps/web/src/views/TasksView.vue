@@ -1,133 +1,146 @@
 <template>
   <main>
     <h1>SprintDesk — Project Management</h1>
-    <EditTaskModal
-      v-if="selectedTask !== undefined"
-      @close="closeEditTask"
-      @save="updateTask"
-      :task="selectedTask"
-      :key="selectedTask.id"
-    />
-    <p v-if="isLoading" role="status">Loading tasks...</p>
-    <p v-if="fetchError" role="alert">{{ fetchError }}</p>
-    <TaskSummary :tasks="tasks" />
+    <p v-if="projectStore.loading" role="status">Loading projects...</p>
+    <p v-if="projectStore.error" role="alert">{{ projectStore.error }}</p>
+    <p v-if="!projectStore.loading && !projectStore.error && projectStore.projects.length === 0">
+      Create a project first
+    </p>
+    <template v-if="selectedProjectId !== null">
+      <label for="project-select">Project:</label>
+      <select id="project-select" v-model="selectedProjectId">
+        <option v-for="project in projectStore.projects" :key="project.id" :value="project.id">
+          {{ project.name }}
+        </option>
+      </select>
+      <EditTaskModal
+        v-if="selectedTask !== undefined"
+        @close="closeEditTask"
+        @save="updateTask"
+        :task="selectedTask"
+        :key="selectedTask.id"
+      />
+      <p v-if="isLoading" role="status">Loading tasks...</p>
+      <p v-if="fetchError" role="alert">{{ fetchError }}</p>
+      <TaskSummary :tasks="tasks" />
 
-    <button @click="selectedView = 'list'" type="button" :aria-pressed="selectedView === 'list'">
-      List View
-    </button>
-    <button
-      @click="selectedView = 'kanban'"
-      type="button"
-      :aria-pressed="selectedView === 'kanban'"
-    >
-      Kanban View
-    </button>
+      <button @click="selectedView = 'list'" type="button" :aria-pressed="selectedView === 'list'">
+        List View
+      </button>
+      <button
+        @click="selectedView = 'kanban'"
+        type="button"
+        :aria-pressed="selectedView === 'kanban'"
+      >
+        Kanban View
+      </button>
 
-    <section class="task-list" v-show="selectedView === 'list'">
-      <div>
-        <label for="task-search">Search Tasks:</label>
-        <input
-          v-model="searchQuery"
-          id="task-search"
-          type="text"
-          placeholder="Search by title..."
+      <section class="task-list" v-show="selectedView === 'list'">
+        <div>
+          <label for="task-search">Search Tasks:</label>
+          <input
+            v-model="searchQuery"
+            id="task-search"
+            type="text"
+            placeholder="Search by title..."
+          />
+        </div>
+
+        <div>
+          <label for="task-filter">Filter Tasks:</label>
+          <select id="task-filter" v-model="selectedFilter">
+            <option value="all">All Statuses</option>
+            <option value="todo">To Do</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+
+        <button type="button" @click="resetFilters" :disabled="!hasActiveFilters">
+          Reset Filters
+        </button>
+
+        <p v-if="filteredTasks.length === 0">No tasks found for the selected filters.</p>
+        <TaskCard
+          v-for="task in filteredTasks"
+          :key="task.id"
+          :task="task"
+          @edit="handleEditTask"
+          @delete="deleteTask"
         />
-      </div>
+      </section>
 
-      <div>
-        <label for="task-filter">Filter Tasks:</label>
-        <select id="task-filter" v-model="selectedFilter">
-          <option value="all">All Statuses</option>
+      <section class="task-board" v-show="selectedView === 'kanban'">
+        <h2>Kanban Board</h2>
+        <div class="column">
+          <h3>Todo ({{ todoTasks.length }})</h3>
+          <p v-if="todoTasks.length === 0">No tasks in this column.</p>
+          <TaskCard
+            v-for="task in todoTasks"
+            :key="task.id"
+            :task="task"
+            @edit="handleEditTask"
+            @delete="deleteTask"
+          />
+        </div>
+
+        <div class="column">
+          <h3>In Progress ({{ inProgressTasks.length }})</h3>
+          <p v-if="inProgressTasks.length === 0">No tasks in this column.</p>
+          <TaskCard
+            v-for="task in inProgressTasks"
+            :key="task.id"
+            :task="task"
+            @edit="handleEditTask"
+            @delete="deleteTask"
+          />
+        </div>
+
+        <div class="column">
+          <h3>Done ({{ doneTasks.length }})</h3>
+          <p v-if="doneTasks.length === 0">No tasks in this column.</p>
+          <TaskCard
+            v-for="task in doneTasks"
+            :key="task.id"
+            :task="task"
+            @edit="handleEditTask"
+            @delete="deleteTask"
+          />
+        </div>
+      </section>
+
+      <h2>Create New Task</h2>
+      <form @submit.prevent="addTask">
+        <label for="task-title">Task Title:</label>
+        <input
+          id="task-title"
+          type="text"
+          v-model="inputTitle"
+          :aria-invalid="Boolean(titleError)"
+          :aria-describedby="titleError ? 'task-title-error' : undefined"
+        />
+        <p v-if="titleError" id="task-title-error" role="alert">
+          {{ titleError }}
+        </p>
+
+        <label for="task-status">Status:</label>
+        <select id="task-status" v-model="selectedStatus">
           <option value="todo">To Do</option>
           <option value="in_progress">In Progress</option>
           <option value="done">Done</option>
         </select>
-      </div>
 
-      <button type="button" @click="resetFilters" :disabled="!hasActiveFilters">
-        Reset Filters
-      </button>
+        <label for="task-priority">Priority:</label>
+        <select id="task-priority" v-model="selectedPriority">
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </select>
 
-      <p v-if="filteredTasks.length === 0">No tasks found for the selected filters.</p>
-      <TaskCard
-        v-for="task in filteredTasks"
-        :key="task.id"
-        :task="task"
-        @edit="handleEditTask"
-        @delete="deleteTask"
-      />
-    </section>
-
-    <section class="task-board" v-show="selectedView === 'kanban'">
-      <h2>Kanban Board</h2>
-      <div class="column">
-        <h3>Todo ({{ todoTasks.length }})</h3>
-        <p v-if="todoTasks.length === 0">No tasks in this column.</p>
-        <TaskCard
-          v-for="task in todoTasks"
-          :key="task.id"
-          :task="task"
-          @edit="handleEditTask"
-          @delete="deleteTask"
-        />
-      </div>
-
-      <div class="column">
-        <h3>In Progress ({{ inProgressTasks.length }})</h3>
-        <p v-if="inProgressTasks.length === 0">No tasks in this column.</p>
-        <TaskCard
-          v-for="task in inProgressTasks"
-          :key="task.id"
-          :task="task"
-          @edit="handleEditTask"
-          @delete="deleteTask"
-        />
-      </div>
-
-      <div class="column">
-        <h3>Done ({{ doneTasks.length }})</h3>
-        <p v-if="doneTasks.length === 0">No tasks in this column.</p>
-        <TaskCard
-          v-for="task in doneTasks"
-          :key="task.id"
-          :task="task"
-          @edit="handleEditTask"
-          @delete="deleteTask"
-        />
-      </div>
-    </section>
-
-    <h2>Create New Task</h2>
-    <form @submit.prevent="addTask">
-      <label for="task-title">Task Title:</label>
-      <input
-        id="task-title"
-        type="text"
-        v-model="inputTitle"
-        :aria-invalid="Boolean(titleError)"
-        :aria-describedby="titleError ? 'task-title-error' : undefined"
-      />
-      <p v-if="titleError" id="task-title-error" role="alert">
-        {{ titleError }}
-      </p>
-
-      <label for="task-status">Status:</label>
-      <select id="task-status" v-model="selectedStatus">
-        <option value="todo">To Do</option>
-        <option value="in_progress">In Progress</option>
-        <option value="done">Done</option>
-      </select>
-
-      <label for="task-priority">Priority:</label>
-      <select id="task-priority" v-model="selectedPriority">
-        <option value="low">Low</option>
-        <option value="medium">Medium</option>
-        <option value="high">High</option>
-        <option value="urgent">Urgent</option>
-      </select>
-
-      <button type="submit">Add Task</button>
-    </form>
+        <button type="submit" :disabled="isLoading">Add Task</button>
+      </form>
+    </template>
   </main>
 </template>
 
@@ -139,13 +152,29 @@ import TaskSummary from '@/components/TaskSummary.vue'
 import EditTaskModal from '@/components/EditTaskModal.vue'
 import { useTaskFilters } from '@/composables/useTaskFilters.ts'
 import { useTaskStore } from '@/stores/task.ts'
+import { useProjectStore } from '@/stores/project'
 import { storeToRefs } from 'pinia'
 
 const taskStore = useTaskStore()
+const projectStore = useProjectStore()
 const { tasks, isLoading, fetchError } = storeToRefs(taskStore)
+const selectedProjectId = ref<number | null>(null)
 
-onMounted(() => {
-  void taskStore.fetchTasks()
+onMounted(async () => {
+  taskStore.clearTasks()
+  try {
+    await projectStore.fetchProjects()
+    selectedProjectId.value = projectStore.projects[0]?.id ?? null
+  } catch {
+    // The store exposes the error to the UI.
+  }
+})
+
+watch(selectedProjectId, (projectId) => {
+  taskStore.clearTasks()
+  if (projectId !== null) {
+    void taskStore.fetchTasks(projectId)
+  }
 })
 
 type TaskView = 'list' | 'kanban'
@@ -180,7 +209,7 @@ const selectedTask = computed(() => {
   return tasks.value.find((task) => task.id === selectedTaskId.value)
 })
 
-function addTask() {
+async function addTask() {
   const title = inputTitle.value.trim()
 
   if (title.length === 0) {
@@ -190,20 +219,30 @@ function addTask() {
 
   const status = selectedStatus.value
   const priority = selectedPriority.value
+  const projectId = selectedProjectId.value
 
-  taskStore.addTask({ title, status, priority })
+  if (projectId === null) return
 
-  titleError.value = ''
-  inputTitle.value = ''
-  selectedStatus.value = 'todo'
-  selectedPriority.value = 'high'
+  try {
+    await taskStore.addTask({ title, status, priority, projectId })
+    titleError.value = ''
+    inputTitle.value = ''
+    selectedStatus.value = 'todo'
+    selectedPriority.value = 'high'
+  } catch {
+    // The store exposes the error to the UI.
+  }
 }
 
-function deleteTask(taskId: number) {
-  taskStore.deleteTask(taskId)
+async function deleteTask(taskId: number) {
+  try {
+    await taskStore.deleteTask(taskId)
 
-  if (taskId === selectedTaskId.value) {
-    selectedTaskId.value = null
+    if (taskId === selectedTaskId.value) {
+      selectedTaskId.value = null
+    }
+  } catch {
+    // The store exposes the error to the UI.
   }
 }
 
@@ -215,10 +254,13 @@ function closeEditTask() {
   selectedTaskId.value = null
 }
 
-function updateTask(taskId: Task['id'], changes: TaskChanges) {
-  taskStore.updateTask(taskId, changes)
-
-  closeEditTask()
+async function updateTask(taskId: Task['id'], changes: TaskChanges) {
+  try {
+    await taskStore.updateTask(taskId, changes)
+    closeEditTask()
+  } catch {
+    // Keep the modal open when the update fails.
+  }
 }
 </script>
 
