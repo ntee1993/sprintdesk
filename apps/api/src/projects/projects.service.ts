@@ -8,6 +8,7 @@ import { ProjectAuthorizationService } from '../auth/project-authorization.servi
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AddProjectMemberDto } from './dto/add-project-member.dto.js';
+import type { UpdateProjectMemberRoleDto } from './dto/update-project-member-role.dto.js';
 
 @Injectable()
 export class ProjectsService {
@@ -108,6 +109,80 @@ export class ProjectsService {
         error.code === 'P2002'
       ) {
         throw new ConflictException('User is already a project member');
+      }
+
+      throw error;
+    }
+  }
+
+  async updateMemberRole(
+    projectId: number,
+    memberId: number,
+    userId: number,
+    dto: UpdateProjectMemberRoleDto,
+  ) {
+    const role = await this.projectAuthorization.getProjectRole(
+      projectId,
+      userId,
+    );
+
+    if (role !== 'OWNER') {
+      throw new ForbiddenException(
+        'Only project owners can update member roles',
+      );
+    }
+
+    if (memberId === userId) {
+      throw new ForbiddenException('Cannot change the project owner role');
+    }
+
+    try {
+      return await this.prisma.projectMember.update({
+        where: {
+          projectId_userId: { projectId, userId: memberId },
+          project: { is: { ownerId: userId } },
+        },
+        data: { role: dto.role },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('Project member not found');
+      }
+
+      throw error;
+    }
+  }
+
+  async removeMember(projectId: number, memberId: number, userId: number) {
+    const role = await this.projectAuthorization.getProjectRole(
+      projectId,
+      userId,
+    );
+
+    if (role !== 'OWNER') {
+      throw new ForbiddenException('Only project owners can remove members');
+    }
+
+    if (memberId === userId) {
+      throw new ForbiddenException('Cannot remove the project owner');
+    }
+
+    try {
+      return await this.prisma.projectMember.delete({
+        where: {
+          projectId_userId: { projectId, userId: memberId },
+          project: { is: { ownerId: userId } },
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('Project member not found');
       }
 
       throw error;

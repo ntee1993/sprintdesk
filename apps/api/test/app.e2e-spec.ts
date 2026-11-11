@@ -104,6 +104,8 @@ describe('App (e2e)', () => {
   let findProjectMembersMock: ReturnType<typeof vi.fn>;
   let findUserMock: ReturnType<typeof vi.fn>;
   let createMemberMock: ReturnType<typeof vi.fn>;
+  let updateMemberMock: ReturnType<typeof vi.fn>;
+  let deleteMemberMock: ReturnType<typeof vi.fn>;
   let registerMock: ReturnType<typeof vi.fn>;
   let loginWithSessionMock: ReturnType<typeof vi.fn>;
   let validateSessionMock: ReturnType<typeof vi.fn>;
@@ -141,6 +143,16 @@ describe('App (e2e)', () => {
     });
     findUserMock = vi.fn().mockResolvedValue({ id: 2 });
     createMemberMock = vi.fn().mockResolvedValue({
+      projectId: 1,
+      userId: 2,
+      role: 'EDITOR',
+    });
+    updateMemberMock = vi.fn().mockResolvedValue({
+      projectId: 1,
+      userId: 2,
+      role: 'EDITOR',
+    });
+    deleteMemberMock = vi.fn().mockResolvedValue({
       projectId: 1,
       userId: 2,
       role: 'EDITOR',
@@ -209,7 +221,11 @@ describe('App (e2e)', () => {
           findFirst: findProjectMembersMock,
         },
         user: { findUnique: findUserMock },
-        projectMember: { create: createMemberMock },
+        projectMember: {
+          create: createMemberMock,
+          update: updateMemberMock,
+          delete: deleteMemberMock,
+        },
         task: {
           findMany: findManyMock,
 
@@ -347,8 +363,18 @@ describe('App (e2e)', () => {
   describe('GET /projects/:projectId/members', () => {
     const expectedMembers = [
       { userId: 1, name: 'Owner', email: 'owner@example.test', role: 'OWNER' },
-      { userId: 2, name: 'Editor', email: 'editor@example.test', role: 'EDITOR' },
-      { userId: 3, name: 'Viewer', email: 'viewer@example.test', role: 'VIEWER' },
+      {
+        userId: 2,
+        name: 'Editor',
+        email: 'editor@example.test',
+        role: 'EDITOR',
+      },
+      {
+        userId: 3,
+        name: 'Viewer',
+        email: 'viewer@example.test',
+        role: 'VIEWER',
+      },
     ];
 
     it('allows the owner to see the owner and members', async () => {
@@ -433,7 +459,11 @@ describe('App (e2e)', () => {
       expect(createMemberMock).toHaveBeenCalledExactlyOnceWith({
         data: { projectId: 1, userId: 2, role: 'EDITOR' },
       });
-      expect(response.body).toEqual({ projectId: 1, userId: 2, role: 'EDITOR' });
+      expect(response.body).toEqual({
+        projectId: 1,
+        userId: 2,
+        role: 'EDITOR',
+      });
     });
 
     it('rejects an editor attempting to add a member', async () => {
@@ -511,6 +541,132 @@ describe('App (e2e)', () => {
       expect(getProjectRoleMock).not.toHaveBeenCalled();
       expect(findUserMock).not.toHaveBeenCalled();
       expect(createMemberMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PATCH /projects/:projectId/members/:memberId
+  // ---------------------------------------------------------------------------
+
+  describe('PATCH /projects/:projectId/members/:memberId', () => {
+    it('allows the owner to update a member role', async () => {
+      const response = await request(app.getHttpServer())
+        .patch('/projects/1/members/2')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ role: 'EDITOR' })
+        .expect(200);
+
+      expect(response.body).toEqual({
+        projectId: 1,
+        userId: 2,
+        role: 'EDITOR',
+      });
+      expect(getProjectRoleMock).toHaveBeenCalledExactlyOnceWith(1, 1);
+      expect(updateMemberMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          projectId_userId: { projectId: 1, userId: 2 },
+          project: { is: { ownerId: 1 } },
+        },
+        data: { role: 'EDITOR' },
+      });
+    });
+
+    it('rejects non-owners and attempts to change the owner role', async () => {
+      getProjectRoleMock.mockResolvedValueOnce('EDITOR');
+      await request(app.getHttpServer())
+        .patch('/projects/1/members/2')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ role: 'VIEWER' })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .patch('/projects/1/members/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ role: 'VIEWER' })
+        .expect(403);
+
+      expect(updateMemberMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the member does not exist', async () => {
+      updateMemberMock.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: '7.10.1',
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .patch('/projects/1/members/999')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ role: 'VIEWER' })
+        .expect(404);
+    });
+
+    it('rejects an invalid role', async () => {
+      await request(app.getHttpServer())
+        .patch('/projects/1/members/2')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ role: 'OWNER' })
+        .expect(400);
+
+      expect(updateMemberMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /projects/:projectId/members/:memberId
+  // ---------------------------------------------------------------------------
+
+  describe('DELETE /projects/:projectId/members/:memberId', () => {
+    it('allows an owner to remove an editor', async () => {
+      const response = await request(app.getHttpServer())
+        .delete('/projects/1/members/2')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(200);
+
+      expect(response.body).toEqual({ projectId: 1, userId: 2, role: 'EDITOR' });
+      expect(getProjectRoleMock).toHaveBeenCalledExactlyOnceWith(1, 1);
+      expect(deleteMemberMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          projectId_userId: { projectId: 1, userId: 2 },
+          project: { is: { ownerId: 1 } },
+        },
+      });
+    });
+
+    it('rejects an editor attempting to remove a member', async () => {
+      getProjectRoleMock.mockResolvedValueOnce('EDITOR');
+
+      await request(app.getHttpServer())
+        .delete('/projects/1/members/2')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(403);
+
+      expect(deleteMemberMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects an owner attempting to remove themselves', async () => {
+      await request(app.getHttpServer())
+        .delete('/projects/1/members/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(403);
+
+      expect(deleteMemberMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the member does not exist', async () => {
+      deleteMemberMock.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: '7.10.1',
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .delete('/projects/1/members/999')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(404);
     });
   });
 

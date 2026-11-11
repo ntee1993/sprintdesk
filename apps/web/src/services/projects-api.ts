@@ -66,3 +66,31 @@ export async function addProjectMember(
     throw new Error(`Failed to add project member (HTTP ${response.status})`)
   }
 }
+
+export async function updateProjectMemberRole(
+  projectId: number,
+  memberId: number,
+  role: 'EDITOR' | 'VIEWER',
+): Promise<void> {
+  const response = await fetch(`http://localhost:3000/projects/${projectId}/members/${memberId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ role }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to update project member role (HTTP ${response.status})`)
+  }
+}
+
+export async function removeProjectMember(projectId: number, memberId: number): Promise<void> {
+  const response = await fetch(`http://localhost:3000/projects/${projectId}/members/${memberId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to remove project member (HTTP ${response.status})`)
+  }
+}
