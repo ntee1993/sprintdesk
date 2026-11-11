@@ -29,6 +29,18 @@ export class ProjectsController {
     return this.projectsService.findAll(req.user.id);
   }
 
+  @Get(':projectId/members')
+  findMembers(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (projectId < 1) {
+      throw new BadRequestException('Invalid project ID');
+    }
+
+    return this.projectsService.findMembers(projectId, req.user.id);
+  }
+
   @Post()
   @UsePipes(
     new ValidationPipe({

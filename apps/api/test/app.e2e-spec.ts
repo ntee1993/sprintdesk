@@ -101,6 +101,7 @@ describe('App (e2e)', () => {
   let deleteMock: ReturnType<typeof vi.fn>;
   let createProjectMock: ReturnType<typeof vi.fn>;
   let findProjectsMock: ReturnType<typeof vi.fn>;
+  let findProjectMembersMock: ReturnType<typeof vi.fn>;
   let findUserMock: ReturnType<typeof vi.fn>;
   let createMemberMock: ReturnType<typeof vi.fn>;
   let registerMock: ReturnType<typeof vi.fn>;
@@ -125,6 +126,19 @@ describe('App (e2e)', () => {
       ownerId: 1,
     });
     findProjectsMock = vi.fn().mockResolvedValue([]);
+    findProjectMembersMock = vi.fn().mockResolvedValue({
+      owner: { id: 1, name: 'Owner', email: 'owner@example.test' },
+      memberships: [
+        {
+          role: 'EDITOR',
+          user: { id: 2, name: 'Editor', email: 'editor@example.test' },
+        },
+        {
+          role: 'VIEWER',
+          user: { id: 3, name: 'Viewer', email: 'viewer@example.test' },
+        },
+      ],
+    });
     findUserMock = vi.fn().mockResolvedValue({ id: 2 });
     createMemberMock = vi.fn().mockResolvedValue({
       projectId: 1,
@@ -192,6 +206,7 @@ describe('App (e2e)', () => {
         project: {
           create: createProjectMock,
           findMany: findProjectsMock,
+          findFirst: findProjectMembersMock,
         },
         user: { findUnique: findUserMock },
         projectMember: { create: createMemberMock },
@@ -322,6 +337,77 @@ describe('App (e2e)', () => {
 
       expect(findProjectsMock).not.toHaveBeenCalled();
       expect(createProjectMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /projects/:projectId/members
+  // ---------------------------------------------------------------------------
+
+  describe('GET /projects/:projectId/members', () => {
+    const expectedMembers = [
+      { userId: 1, name: 'Owner', email: 'owner@example.test', role: 'OWNER' },
+      { userId: 2, name: 'Editor', email: 'editor@example.test', role: 'EDITOR' },
+      { userId: 3, name: 'Viewer', email: 'viewer@example.test', role: 'VIEWER' },
+    ];
+
+    it('allows the owner to see the owner and members', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/projects/1/members')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(200);
+
+      expect(response.body).toEqual(expectedMembers);
+      expect(getProjectRoleMock).toHaveBeenCalledExactlyOnceWith(1, 1);
+      expect(findProjectMembersMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          id: 1,
+          OR: [{ ownerId: 1 }, { memberships: { some: { userId: 1 } } }],
+        },
+        select: {
+          owner: { select: { id: true, name: true, email: true } },
+          memberships: {
+            select: {
+              role: true,
+              user: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+      });
+    });
+
+    it('allows editors and viewers to see members', async () => {
+      for (const [id, role] of [
+        [2, 'EDITOR'],
+        [3, 'VIEWER'],
+      ] as const) {
+        validateSessionMock.mockResolvedValueOnce({
+          id,
+          name: role,
+          email: `${role.toLowerCase()}@example.test`,
+        });
+        getProjectRoleMock.mockResolvedValueOnce(role);
+
+        const response = await request(app.getHttpServer())
+          .get('/projects/1/members')
+          .set('Cookie', authenticatedSessionCookie)
+          .expect(200);
+
+        expect(response.body).toEqual(expectedMembers);
+        expect(getProjectRoleMock).toHaveBeenLastCalledWith(1, id);
+      }
+    });
+
+    it('returns 404 to a non-member', async () => {
+      getProjectRoleMock.mockResolvedValueOnce(null);
+
+      const response = await request(app.getHttpServer())
+        .get('/projects/1/members')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(404);
+
+      expect(response.body.message).toBe('Project not found');
+      expect(findProjectMembersMock).not.toHaveBeenCalled();
     });
   });
 

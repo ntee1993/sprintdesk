@@ -31,6 +31,54 @@ export class ProjectsService {
     });
   }
 
+  async findMembers(projectId: number, userId: number) {
+    const role = await this.projectAuthorization.getProjectRole(
+      projectId,
+      userId,
+    );
+
+    if (role === null) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        OR: [{ ownerId: userId }, { memberships: { some: { userId } } }],
+      },
+      select: {
+        owner: { select: { id: true, name: true, email: true } },
+        memberships: {
+          select: {
+            role: true,
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (project === null) {
+      throw new NotFoundException('Project not found');
+    }
+
+    return [
+      {
+        userId: project.owner.id,
+        name: project.owner.name,
+        email: project.owner.email,
+        role: 'OWNER' as const,
+      },
+      ...project.memberships
+        .filter((membership) => membership.user.id !== project.owner.id)
+        .map((membership) => ({
+          userId: membership.user.id,
+          name: membership.user.name,
+          email: membership.user.email,
+          role: membership.role,
+        })),
+    ];
+  }
+
   async addMember(projectId: number, userId: number, dto: AddProjectMemberDto) {
     const role = await this.projectAuthorization.getProjectRole(
       projectId,
