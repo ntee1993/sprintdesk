@@ -5,6 +5,7 @@ export async function createTask(input: {
   status: TaskStatus
   priority: TaskPriority
   projectId: number
+  assigneeId?: number | null
 }): Promise<Task> {
   const response = await fetch('http://localhost:3000/tasks', {
     method: 'POST',

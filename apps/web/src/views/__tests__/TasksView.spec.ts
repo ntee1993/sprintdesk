@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import TasksView from '../TasksView.vue'
+import TaskCard from '../../components/TaskCard.vue'
 import { useTaskStore } from '../../stores/task'
 
 describe('TasksView', () => {
@@ -13,9 +14,23 @@ describe('TasksView', () => {
         Promise.resolve({
           ok: true,
           json: async () => {
-            if (url.endsWith('/projects')) return [{ id: 1, name: 'Project', ownerId: 1 }]
+            if (url.endsWith('/projects')) {
+              return [
+                { id: 1, name: 'Project', ownerId: 1 },
+                { id: 2, name: 'Other Project', ownerId: 1 },
+              ]
+            }
+            if (url.endsWith('/projects/1/members')) {
+              return [{ userId: 2, name: 'Bob', email: 'bob@example.test', role: 'EDITOR' }]
+            }
+            if (url.endsWith('/projects/2/members')) {
+              return [{ userId: 3, name: 'Carol', email: 'carol@example.test', role: 'VIEWER' }]
+            }
             if (options?.method === 'POST') {
               return { id: 42, ...JSON.parse(options.body as string) }
+            }
+            if (options?.method === 'PATCH') {
+              return { id: 7, ...JSON.parse(options.body as string) }
             }
             return []
           },
@@ -110,5 +125,81 @@ describe('TasksView', () => {
     await flushPromises()
     expect(taskStore.tasks.length).toBe(initialCount + 1)
     expect(taskStore.tasks.at(-1)?.title).toBe('Fix Validation')
+  })
+
+  it('loads and displays members of the selected project', async () => {
+    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    expect(wrapper.get('#task-assignee').text()).toContain('Bob (EDITOR)')
+    await wrapper.get('#project-select').setValue('2')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledWith('http://localhost:3000/projects/2/members', {
+      credentials: 'include',
+    })
+    expect(wrapper.get('#task-assignee').text()).toContain('Carol (VIEWER)')
+    expect(wrapper.get('#task-assignee').text()).not.toContain('Bob (EDITOR)')
+  })
+
+  it('creates a task with the selected numeric assignee ID', async () => {
+    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('#task-title').setValue('Assigned task')
+    await wrapper.get('#task-assignee').setValue('2')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    const taskPostCalls = vi.mocked(fetch).mock.calls.filter(
+      ([url, options]) => url === 'http://localhost:3000/tasks' && options?.method === 'POST',
+    )
+    expect(taskPostCalls).toHaveLength(1)
+
+    expect(fetch).toHaveBeenCalledWith('http://localhost:3000/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        title: 'Assigned task',
+        status: 'todo',
+        priority: 'high',
+        projectId: 1,
+        assigneeId: 2,
+      }),
+    })
+  })
+
+  it('sends null when editing a task to be unassigned', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(TasksView, {
+      global: { plugins: [pinia], stubs: { BaseModal: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+    useTaskStore(pinia).tasks = [
+      { id: 7, title: 'Assigned task', status: 'todo', priority: 'high', assigneeId: 2 },
+    ]
+    await wrapper.vm.$nextTick()
+
+    await wrapper.getComponent(TaskCard).get('button').trigger('click')
+    const assigneeSelect = wrapper.get('#draft-assignee').element as HTMLSelectElement
+    expect(assigneeSelect.value).toBe('2')
+
+    await wrapper.get('#draft-assignee option').setValue()
+    expect(assigneeSelect.selectedOptions[0]?.textContent).toBe('Unassigned')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledWith('http://localhost:3000/tasks/7', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        title: 'Assigned task',
+        status: 'todo',
+        priority: 'high',
+        assigneeId: null,
+      }),
+    })
   })
 })

@@ -28,6 +28,14 @@
         <option value="urgent">Urgent</option>
       </select>
 
+      <label for="draft-assignee">Assignee</label>
+      <select v-model="draftAssigneeId" id="draft-assignee">
+        <option :value="null">Unassigned</option>
+        <option v-for="member in members" :key="member.userId" :value="member.userId">
+          {{ member.name }} ({{ member.role }})
+        </option>
+      </select>
+
       <button type="submit">Save Changes</button>
     </form>
   </BaseModal>
@@ -36,10 +44,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { Task, TaskChanges } from '@/types/task'
+import type { ProjectMember } from '@/services/projects-api'
 import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{
   task: Task
+  members: ProjectMember[]
 }>()
 
 const emit = defineEmits<{
@@ -50,6 +60,7 @@ const emit = defineEmits<{
 const draftTitle = ref(props.task.title)
 const draftStatus = ref(props.task.status)
 const draftPriority = ref(props.task.priority)
+const draftAssigneeId = ref<number | null>(props.task.assigneeId ?? null)
 
 const titleErrorMsg = 'Task title is required.'
 const titleError = ref('')
@@ -77,6 +88,7 @@ function handleSave() {
     title,
     status,
     priority,
+    assigneeId: draftAssigneeId.value,
   }
 
   emit('save', taskId, changes)

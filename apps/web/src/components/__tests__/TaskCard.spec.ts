@@ -11,6 +11,22 @@ const task = {
 }
 
 describe('TaskCard', () => {
+  it('displays the assignee name when the task is assigned', () => {
+    const wrapper = mount(TaskCard, {
+      props: { task: { ...task, assigneeId: 2 }, assigneeName: 'Bob' },
+    })
+
+    expect(wrapper.text()).toContain('Assignee: Bob')
+  })
+
+  it('displays Unassigned when the task has no assignee', () => {
+    const wrapper = mount(TaskCard, {
+      props: { task: { ...task, assigneeId: null } },
+    })
+
+    expect(wrapper.text()).toContain('Assignee: Unassigned')
+  })
+
   it('displays the task title', () => {
     const wrapper = mount(TaskCard, {
       props: {

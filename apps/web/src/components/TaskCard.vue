@@ -1,8 +1,11 @@
 <template>
   <div>
     <p>
-      {{ task.title }} - {{ task.status }} - {{ task.priority }} -
-      {{ task.assignee ?? 'Unassigned' }}
+      {{ task.title }} - {{ task.status }} - {{ task.priority }}
+    </p>
+    <p>
+      Assignee:
+      {{ task.assigneeId == null ? 'Unassigned' : (assigneeName ?? `User #${task.assigneeId}`) }}
     </p>
     <p v-if="expanded">Additional details are visible.</p>
 
@@ -20,6 +23,7 @@ import { ref } from 'vue'
 
 const props = defineProps<{
   task: Task
+  assigneeName?: string
 }>()
 
 const emit = defineEmits<{

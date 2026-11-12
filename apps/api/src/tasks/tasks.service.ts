@@ -69,7 +69,28 @@ export class TasksService {
     return task;
   }
 
+  async validateAssignee(projectId: number, assigneeId: number): Promise<void> {
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        OR: [
+          { ownerId: assigneeId },
+          { memberships: { some: { userId: assigneeId } } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (project === null) {
+      throw new BadRequestException('Assignee must belong to the project');
+    }
+  }
+
   async create(task: CreateTaskInput) {
+    if (task.assigneeId != null) {
+      await this.validateAssignee(task.projectId, task.assigneeId);
+    }
+
     try {
       return await this.prisma.task.create({
         data: task,
@@ -87,6 +108,29 @@ export class TasksService {
   }
 
   async update(id: number, changes: UpdateTaskDto, userId: number) {
+    if (changes.assigneeId != null) {
+      const existingTask = await this.prisma.task.findFirst({
+        where: {
+          id,
+          project: {
+            is: {
+              OR: [
+                { ownerId: userId },
+                { memberships: { some: { userId, role: 'EDITOR' } } },
+              ],
+            },
+          },
+        },
+        select: { projectId: true },
+      });
+
+      if (existingTask === null) {
+        throw new NotFoundException('Task not found');
+      }
+
+      await this.validateAssignee(existingTask.projectId, changes.assigneeId);
+    }
+
     try {
       const tasks = await this.prisma.task.updateManyAndReturn({
         where: {

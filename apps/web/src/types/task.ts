@@ -6,8 +6,9 @@ export type Task = {
   title: string
   status: TaskStatus
   priority: TaskPriority
+  assigneeId?: number | null
   assignee?: string
   dueDate?: string
 }
 
-export type TaskChanges = Pick<Task, 'title' | 'status' | 'priority'>
+export type TaskChanges = Pick<Task, 'title' | 'status' | 'priority' | 'assigneeId'>

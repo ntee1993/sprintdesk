@@ -57,6 +57,7 @@ describe('TasksService', () => {
         {
           provide: PrismaService,
           useValue: {
+            project: { findFirst: vi.fn().mockResolvedValue({ id: 1 }) },
             task: {
               findMany: findManyMock,
               findFirst: findFirstMock,

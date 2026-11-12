@@ -81,14 +81,6 @@ const validTaskInput = {
 const authenticatedSessionCookie =
   'sprintdesk_session=authenticated-session-token';
 
-const foreignKeyError = new Prisma.PrismaClientKnownRequestError(
-  'Foreign key constraint failed',
-  {
-    code: 'P2003',
-    clientVersion: '7.10.1',
-  },
-);
-
 // -----------------------------------------------------------------------------
 // E2E Tests
 // -----------------------------------------------------------------------------
@@ -1124,6 +1116,59 @@ describe('App (e2e)', () => {
       expect(getProjectRoleMock).toHaveBeenCalledExactlyOnceWith(1, 1);
     });
 
+    it('assigns a task to a project member', async () => {
+      const input = { ...validTaskInput, assigneeId: 2 };
+      findProjectMembersMock.mockResolvedValueOnce({ id: 1 });
+
+      const response = await request(app.getHttpServer())
+        .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(input)
+        .expect(201);
+
+      expect(response.body).toEqual({ id: 3, ...input });
+      expect(findProjectMembersMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          id: 1,
+          OR: [{ ownerId: 2 }, { memberships: { some: { userId: 2 } } }],
+        },
+        select: { id: true },
+      });
+      expect(createMock).toHaveBeenCalledExactlyOnceWith({ data: input });
+    });
+
+    it('rejects assigning a task to a user outside the project', async () => {
+      const input = { ...validTaskInput, assigneeId: 99 };
+      findProjectMembersMock.mockResolvedValueOnce(null);
+
+      await request(app.getHttpServer())
+        .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(input)
+        .expect(400);
+
+      expect(findProjectMembersMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          id: 1,
+          OR: [{ ownerId: 99 }, { memberships: { some: { userId: 99 } } }],
+        },
+        select: { id: true },
+      });
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it('creates an unassigned task when assigneeId is omitted', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(validTaskInput)
+        .expect(201);
+
+      expect(response.body).toEqual({ id: 3, ...validTaskInput });
+      expect(findProjectMembersMock).not.toHaveBeenCalled();
+      expect(createMock).toHaveBeenCalledExactlyOnceWith({ data: validTaskInput });
+    });
+
     it('creates a task and assign to user ID 1', async () => {
       const assignedTaskInput = {
         title: 'Learn Prisma Relations',
@@ -1132,6 +1177,8 @@ describe('App (e2e)', () => {
         projectId: 1,
         assigneeId: 1,
       };
+
+      findProjectMembersMock.mockResolvedValueOnce({ id: 1 });
 
       createMock.mockResolvedValueOnce({
         id: 5,
@@ -1284,15 +1331,15 @@ describe('App (e2e)', () => {
           ...validTaskInput,
           assigneeId: 999999,
         };
-        createMock.mockRejectedValueOnce(foreignKeyError);
+        findProjectMembersMock.mockResolvedValueOnce(null);
         const response = await request(app.getHttpServer())
           .post('/tasks')
           .set('Cookie', authenticatedSessionCookie)
           .send(input)
           .expect(400);
 
-        expect(response.body.message).toBe('Invalid task relation');
-        expect(createMock).toHaveBeenCalledExactlyOnceWith({ data: input });
+        expect(response.body.message).toBe('Assignee must belong to the project');
+        expect(createMock).not.toHaveBeenCalled();
       });
     });
   });
@@ -1581,6 +1628,60 @@ describe('App (e2e)', () => {
   // ---------------------------------------------------------------------------
 
   describe('PATCH /tasks/:id', () => {
+    it('assigns a task to a project member', async () => {
+      findProjectMembersMock.mockResolvedValueOnce({ id: 1 });
+      updateMock.mockResolvedValueOnce([{ ...mockTasks[0], assigneeId: 2 }]);
+
+      const response = await request(app.getHttpServer())
+        .patch('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ assigneeId: 2 })
+        .expect(200);
+
+      expect(response.body).toEqual({ ...mockTasks[0], assigneeId: 2 });
+      expect(findProjectMembersMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          id: 1,
+          OR: [{ ownerId: 2 }, { memberships: { some: { userId: 2 } } }],
+        },
+        select: { id: true },
+      });
+      expect(updateMock).toHaveBeenCalledOnce();
+    });
+
+    it('rejects assigning a task to a user outside the project', async () => {
+      findProjectMembersMock.mockResolvedValueOnce(null);
+
+      await request(app.getHttpServer())
+        .patch('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ assigneeId: 99 })
+        .expect(400);
+
+      expect(findProjectMembersMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          id: 1,
+          OR: [{ ownerId: 99 }, { memberships: { some: { userId: 99 } } }],
+        },
+        select: { id: true },
+      });
+      expect(updateMock).not.toHaveBeenCalled();
+    });
+
+    it('unassigns a task without validating membership', async () => {
+      updateMock.mockResolvedValueOnce([{ ...mockTasks[0], assigneeId: null }]);
+
+      const response = await request(app.getHttpServer())
+        .patch('/tasks/1')
+        .set('Cookie', authenticatedSessionCookie)
+        .send({ assigneeId: null })
+        .expect(200);
+
+      expect(response.body).toEqual({ ...mockTasks[0], assigneeId: null });
+      expect(findProjectMembersMock).not.toHaveBeenCalled();
+      expect(updateMock).toHaveBeenCalledOnce();
+    });
+
     it('updates a task successfully', async () => {
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')

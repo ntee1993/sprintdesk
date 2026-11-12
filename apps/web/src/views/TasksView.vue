@@ -18,10 +18,12 @@
         @close="closeEditTask"
         @save="updateTask"
         :task="selectedTask"
+        :members="members"
         :key="selectedTask.id"
       />
       <p v-if="isLoading" role="status">Loading tasks...</p>
       <p v-if="fetchError" role="alert">{{ fetchError }}</p>
+      <p v-if="membersError" role="alert">{{ membersError }}</p>
       <TaskSummary :tasks="tasks" />
 
       <button @click="selectedView = 'list'" type="button" :aria-pressed="selectedView === 'list'">
@@ -65,6 +67,7 @@
           v-for="task in filteredTasks"
           :key="task.id"
           :task="task"
+          :assignee-name="getAssigneeName(task)"
           @edit="handleEditTask"
           @delete="deleteTask"
         />
@@ -79,6 +82,7 @@
             v-for="task in todoTasks"
             :key="task.id"
             :task="task"
+            :assignee-name="getAssigneeName(task)"
             @edit="handleEditTask"
             @delete="deleteTask"
           />
@@ -91,6 +95,7 @@
             v-for="task in inProgressTasks"
             :key="task.id"
             :task="task"
+            :assignee-name="getAssigneeName(task)"
             @edit="handleEditTask"
             @delete="deleteTask"
           />
@@ -103,6 +108,7 @@
             v-for="task in doneTasks"
             :key="task.id"
             :task="task"
+            :assignee-name="getAssigneeName(task)"
             @edit="handleEditTask"
             @delete="deleteTask"
           />
@@ -138,6 +144,14 @@
           <option value="urgent">Urgent</option>
         </select>
 
+        <label for="task-assignee">Assignee:</label>
+        <select id="task-assignee" v-model="selectedAssigneeId">
+          <option :value="null">Unassigned</option>
+          <option v-for="member in members" :key="member.userId" :value="member.userId">
+            {{ member.name }} ({{ member.role }})
+          </option>
+        </select>
+
         <button type="submit" :disabled="isLoading">Add Task</button>
       </form>
     </template>
@@ -145,8 +159,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import type { Task, TaskPriority, TaskStatus, TaskChanges } from '@/types/task'
+import { getProjectMembers, type ProjectMember } from '@/services/projects-api'
 import TaskCard from '@/components/TaskCard.vue'
 import TaskSummary from '@/components/TaskSummary.vue'
 import EditTaskModal from '@/components/EditTaskModal.vue'
@@ -159,6 +174,14 @@ const taskStore = useTaskStore()
 const projectStore = useProjectStore()
 const { tasks, isLoading, fetchError } = storeToRefs(taskStore)
 const selectedProjectId = ref<number | null>(null)
+const selectedAssigneeId = ref<number | null>(null)
+const members = ref<ProjectMember[]>([])
+const membersError = ref<string | null>(null)
+let latestMembersRequestId = 0
+
+function getAssigneeName(task: Task): string | undefined {
+  return members.value.find((member) => member.userId === task.assigneeId)?.name
+}
 
 onMounted(async () => {
   taskStore.clearTasks()
@@ -170,11 +193,33 @@ onMounted(async () => {
   }
 })
 
-watch(selectedProjectId, (projectId) => {
-  taskStore.clearTasks()
-  if (projectId !== null) {
-    void taskStore.fetchTasks(projectId)
-  }
+watch(
+  selectedProjectId,
+  (projectId) => {
+    const requestId = ++latestMembersRequestId
+    selectedAssigneeId.value = null
+    members.value = []
+    membersError.value = null
+    taskStore.clearTasks()
+
+    if (projectId !== null) {
+      void taskStore.fetchTasks(projectId)
+      void getProjectMembers(projectId)
+        .then((result) => {
+          if (requestId === latestMembersRequestId) members.value = result
+        })
+        .catch((error: unknown) => {
+          if (requestId === latestMembersRequestId) {
+            membersError.value = error instanceof Error ? error.message : 'Failed to load members'
+          }
+        })
+    }
+  },
+  { flush: 'sync' },
+)
+
+onBeforeUnmount(() => {
+  latestMembersRequestId++
 })
 
 type TaskView = 'list' | 'kanban'
@@ -224,11 +269,18 @@ async function addTask() {
   if (projectId === null) return
 
   try {
-    await taskStore.addTask({ title, status, priority, projectId })
+    await taskStore.addTask({
+      title,
+      status,
+      priority,
+      projectId,
+      ...(selectedAssigneeId.value !== null ? { assigneeId: selectedAssigneeId.value } : {}),
+    })
     titleError.value = ''
     inputTitle.value = ''
     selectedStatus.value = 'todo'
     selectedPriority.value = 'high'
+    selectedAssigneeId.value = null
   } catch {
     // The store exposes the error to the UI.
   }
