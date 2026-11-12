@@ -171,11 +171,20 @@ export class ProjectsService {
     }
 
     try {
-      return await this.prisma.projectMember.delete({
-        where: {
-          projectId_userId: { projectId, userId: memberId },
-          project: { is: { ownerId: userId } },
-        },
+      return await this.prisma.$transaction(async (tx) => {
+        const member = await tx.projectMember.delete({
+          where: {
+            projectId_userId: { projectId, userId: memberId },
+            project: { is: { ownerId: userId } },
+          },
+        });
+
+        await tx.task.updateMany({
+          where: { projectId, assigneeId: memberId },
+          data: { assigneeId: null },
+        });
+
+        return member;
       });
     } catch (error) {
       if (

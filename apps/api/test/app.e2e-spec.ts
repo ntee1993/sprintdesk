@@ -98,6 +98,8 @@ describe('App (e2e)', () => {
   let createMemberMock: ReturnType<typeof vi.fn>;
   let updateMemberMock: ReturnType<typeof vi.fn>;
   let deleteMemberMock: ReturnType<typeof vi.fn>;
+  let unassignTasksMock: ReturnType<typeof vi.fn>;
+  let transactionMock: ReturnType<typeof vi.fn>;
   let registerMock: ReturnType<typeof vi.fn>;
   let loginWithSessionMock: ReturnType<typeof vi.fn>;
   let validateSessionMock: ReturnType<typeof vi.fn>;
@@ -149,6 +151,17 @@ describe('App (e2e)', () => {
       userId: 2,
       role: 'EDITOR',
     });
+    unassignTasksMock = vi.fn().mockResolvedValue({ count: 0 });
+    const txMock = {
+      projectMember: { delete: deleteMemberMock },
+      task: { updateMany: unassignTasksMock },
+    };
+    transactionMock = vi
+      .fn()
+      .mockImplementation(
+        async (callback: (tx: typeof txMock) => Promise<unknown>) =>
+          callback(txMock),
+      );
     validateSessionMock.mockResolvedValue({
       id: 1,
       name: 'Tester',
@@ -207,6 +220,7 @@ describe('App (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue({
+        $transaction: transactionMock,
         project: {
           create: createProjectMock,
           findMany: findProjectsMock,
@@ -617,13 +631,22 @@ describe('App (e2e)', () => {
         .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
-      expect(response.body).toEqual({ projectId: 1, userId: 2, role: 'EDITOR' });
+      expect(response.body).toEqual({
+        projectId: 1,
+        userId: 2,
+        role: 'EDITOR',
+      });
       expect(getProjectRoleMock).toHaveBeenCalledExactlyOnceWith(1, 1);
+      expect(transactionMock).toHaveBeenCalledOnce();
       expect(deleteMemberMock).toHaveBeenCalledExactlyOnceWith({
         where: {
           projectId_userId: { projectId: 1, userId: 2 },
           project: { is: { ownerId: 1 } },
         },
+      });
+      expect(unassignTasksMock).toHaveBeenCalledExactlyOnceWith({
+        where: { projectId: 1, assigneeId: 2 },
+        data: { assigneeId: null },
       });
     });
 
@@ -659,6 +682,63 @@ describe('App (e2e)', () => {
         .delete('/projects/1/members/999')
         .set('Cookie', authenticatedSessionCookie)
         .expect(404);
+
+      expect(unassignTasksMock).not.toHaveBeenCalled();
+    });
+
+    it('unassigns tasks belonging to the removed member in the project', async () => {
+      const tasks = [
+        { id: 1, projectId: 1, assigneeId: 2 as number | null },
+        { id: 2, projectId: 1, assigneeId: 2 as number | null },
+      ];
+      unassignTasksMock.mockImplementationOnce(async ({ where, data }) => {
+        const matching = tasks.filter(
+          (task) =>
+            task.projectId === where.projectId &&
+            task.assigneeId === where.assigneeId,
+        );
+        for (const task of matching) task.assigneeId = data.assigneeId;
+        return { count: matching.length };
+      });
+
+      await request(app.getHttpServer())
+        .delete('/projects/1/members/2')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(200);
+
+      expect(unassignTasksMock).toHaveBeenCalledExactlyOnceWith({
+        where: { projectId: 1, assigneeId: 2 },
+        data: { assigneeId: null },
+      });
+      expect(tasks.map((task) => task.assigneeId)).toEqual([null, null]);
+    });
+
+    it('leaves tasks of other members and projects unchanged', async () => {
+      const tasks = [
+        { id: 1, projectId: 1, assigneeId: 2 as number | null },
+        { id: 2, projectId: 1, assigneeId: 3 as number | null },
+        { id: 3, projectId: 2, assigneeId: 2 as number | null },
+      ];
+      unassignTasksMock.mockImplementationOnce(async ({ where, data }) => {
+        const matching = tasks.filter(
+          (task) =>
+            task.projectId === where.projectId &&
+            task.assigneeId === where.assigneeId,
+        );
+        for (const task of matching) task.assigneeId = data.assigneeId;
+        return { count: matching.length };
+      });
+
+      await request(app.getHttpServer())
+        .delete('/projects/1/members/2')
+        .set('Cookie', authenticatedSessionCookie)
+        .expect(200);
+
+      expect(unassignTasksMock).toHaveBeenCalledExactlyOnceWith({
+        where: { projectId: 1, assigneeId: 2 },
+        data: { assigneeId: null },
+      });
+      expect(tasks.map((task) => task.assigneeId)).toEqual([null, 3, 2]);
     });
   });
 
@@ -1166,7 +1246,9 @@ describe('App (e2e)', () => {
 
       expect(response.body).toEqual({ id: 3, ...validTaskInput });
       expect(findProjectMembersMock).not.toHaveBeenCalled();
-      expect(createMock).toHaveBeenCalledExactlyOnceWith({ data: validTaskInput });
+      expect(createMock).toHaveBeenCalledExactlyOnceWith({
+        data: validTaskInput,
+      });
     });
 
     it('creates a task and assign to user ID 1', async () => {
@@ -1338,7 +1420,9 @@ describe('App (e2e)', () => {
           .send(input)
           .expect(400);
 
-        expect(response.body.message).toBe('Assignee must belong to the project');
+        expect(response.body.message).toBe(
+          'Assignee must belong to the project',
+        );
         expect(createMock).not.toHaveBeenCalled();
       });
     });
