@@ -7,6 +7,8 @@ import {
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+const TASK_PAGE_SIZE = 100
+
 export const useTaskStore = defineStore('tasks', () => {
   const tasks = ref<Task[]>([])
 
@@ -16,22 +18,37 @@ export const useTaskStore = defineStore('tasks', () => {
 
   async function fetchTasks(projectId?: number) {
     const requestId = ++latestFetchId
-    const url = projectId
-      ? `http://localhost:3000/tasks?projectId=${projectId}`
-      : 'http://localhost:3000/tasks'
 
     if (requestId === latestFetchId) {
       isLoading.value = true
       fetchError.value = null
     }
     try {
-      const response = await fetch(url, { credentials: 'include' })
-      if (!response.ok) {
-        throw new Error('Failed to fetch tasks')
-      }
-      const data = (await response.json()) as Task[]
-      if (requestId === latestFetchId) {
-        tasks.value = data
+      const allTasks: Task[] = []
+      let page = 1
+
+      while (requestId === latestFetchId) {
+        const query = new URLSearchParams()
+        if (projectId !== undefined) query.set('projectId', String(projectId))
+        query.set('limit', String(TASK_PAGE_SIZE))
+        query.set('page', String(page))
+
+        const response = await fetch(`http://localhost:3000/tasks?${query}`, {
+          credentials: 'include',
+        })
+        if (requestId !== latestFetchId) return
+        if (!response.ok) throw new Error('Failed to fetch tasks')
+
+        const pageTasks = (await response.json()) as Task[]
+        if (requestId !== latestFetchId) return
+
+        allTasks.push(...pageTasks)
+        if (pageTasks.length < TASK_PAGE_SIZE) {
+          tasks.value = allTasks
+          break
+        }
+
+        page++
       }
     } catch {
       if (requestId === latestFetchId) {

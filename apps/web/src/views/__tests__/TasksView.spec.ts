@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import TasksView from '../TasksView.vue'
 import TaskCard from '../../components/TaskCard.vue'
+import TaskSummary from '../../components/TaskSummary.vue'
 import { useTaskStore } from '../../stores/task'
 
 describe('TasksView', () => {
@@ -151,9 +152,11 @@ describe('TasksView', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
-    const taskPostCalls = vi.mocked(fetch).mock.calls.filter(
-      ([url, options]) => url === 'http://localhost:3000/tasks' && options?.method === 'POST',
-    )
+    const taskPostCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([url, options]) => url === 'http://localhost:3000/tasks' && options?.method === 'POST',
+      )
     expect(taskPostCalls).toHaveLength(1)
 
     expect(fetch).toHaveBeenCalledWith('http://localhost:3000/tasks', {
@@ -201,5 +204,140 @@ describe('TasksView', () => {
         assigneeId: null,
       }),
     })
+  })
+
+  it('shows and filters tasks from all pages and summarizes the complete project', async () => {
+    const projectTasks = Array.from({ length: 112 }, (_, index) => ({
+      id: index + 1,
+      title: index === 110 ? 'Needle from page two' : `Task ${index + 1}`,
+      status: index < 100 ? 'todo' : 'done',
+      priority: index === 110 ? 'urgent' : 'high',
+      projectId: 1,
+    }))
+    const mockFetch = vi.fn().mockImplementation(async (input: string) => {
+      const url = new URL(input)
+      if (url.pathname === '/projects') {
+        return { ok: true, json: async () => [{ id: 1, name: 'Project', ownerId: 1 }] }
+      }
+      if (url.pathname === '/projects/1/members') {
+        return { ok: true, json: async () => [] }
+      }
+      if (url.pathname === '/tasks') {
+        const page = Number(url.searchParams.get('page') ?? 1)
+        const limit = Number(url.searchParams.get('limit') ?? 10)
+        const start = (page - 1) * limit
+        return { ok: true, json: async () => projectTasks.slice(start, start + limit) }
+      }
+      throw new Error(`Unexpected request: ${input}`)
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    const taskRequests = mockFetch.mock.calls
+      .map(([input]) => new URL(input as string))
+      .filter((url) => url.pathname === '/tasks')
+    expect(taskRequests.map((url) => url.searchParams.get('page'))).toEqual(['1', '2'])
+    expect(taskRequests.every((url) => url.searchParams.get('projectId') === '1')).toBe(true)
+    expect(wrapper.get('.task-list').text()).toContain('Needle from page two')
+    expect(wrapper.getComponent(TaskSummary).text()).toContain('Total Tasks: 112')
+    expect(wrapper.getComponent(TaskSummary).text()).toContain('To Do: 100')
+    expect(wrapper.getComponent(TaskSummary).text()).toContain('Completed: 12')
+    expect(wrapper.getComponent(TaskSummary).text()).toContain('Urgent: 1')
+    expect(wrapper.get('.task-board').text()).toContain('Done (12)')
+
+    await wrapper.get('#task-search').setValue('needle')
+    await wrapper.get('#task-filter').setValue('done')
+
+    expect(wrapper.get('.task-list').text()).toContain('Needle from page two')
+    expect(wrapper.get('.task-list').text()).not.toContain('Task 1 -')
+    expect(wrapper.getComponent(TaskSummary).text()).toContain('Total Tasks: 112')
+  })
+
+  it('keeps the selected project visible when an earlier project response arrives later', async () => {
+    let resolveProjectA!: (response: Response) => void
+    const projectAResponse = new Promise<Response>((resolve) => {
+      resolveProjectA = resolve
+    })
+    const projectBTask = { id: 2, title: 'Project B task', status: 'todo', priority: 'high' }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: string) => {
+        const url = new URL(input)
+        if (url.pathname === '/projects') {
+          return {
+            ok: true,
+            json: async () => [
+              { id: 1, name: 'Project A', ownerId: 1 },
+              { id: 2, name: 'Project B', ownerId: 1 },
+            ],
+          }
+        }
+        if (url.pathname.endsWith('/members')) return { ok: true, json: async () => [] }
+        if (url.pathname === '/tasks' && url.searchParams.get('projectId') === '1') {
+          return projectAResponse
+        }
+        if (url.pathname === '/tasks' && url.searchParams.get('projectId') === '2') {
+          return { ok: true, json: async () => [projectBTask] }
+        }
+        throw new Error(`Unexpected request: ${input}`)
+      }),
+    )
+
+    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+    await wrapper.get('#project-select').setValue('2')
+    await flushPromises()
+    expect(wrapper.get('.task-list').text()).toContain('Project B task')
+
+    resolveProjectA({
+      ok: true,
+      json: async () => [{ id: 1, title: 'Project A task', status: 'todo', priority: 'high' }],
+    } as Response)
+    await flushPromises()
+
+    expect(wrapper.get('.task-list').text()).toContain('Project B task')
+    expect(wrapper.get('.task-list').text()).not.toContain('Project A task')
+    expect(wrapper.getComponent(TaskSummary).text()).toContain('Total Tasks: 1')
+  })
+
+  it('does not show partial project totals while a later page is loading or fails', async () => {
+    let resolvePageTwo!: (response: Response) => void
+    const pageTwo = new Promise<Response>((resolve) => {
+      resolvePageTwo = resolve
+    })
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      title: `Task ${index + 1}`,
+      status: 'todo',
+      priority: 'high',
+    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: string) => {
+        const url = new URL(input)
+        if (url.pathname === '/projects') {
+          return { ok: true, json: async () => [{ id: 1, name: 'Project', ownerId: 1 }] }
+        }
+        if (url.pathname.endsWith('/members')) return { ok: true, json: async () => [] }
+        if (url.pathname === '/tasks' && url.searchParams.get('page') === '1') {
+          return { ok: true, json: async () => firstPage }
+        }
+        if (url.pathname === '/tasks' && url.searchParams.get('page') === '2') return pageTwo
+        throw new Error(`Unexpected request: ${input}`)
+      }),
+    )
+
+    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Loading tasks')
+    expect(wrapper.findComponent(TaskSummary).exists()).toBe(false)
+
+    resolvePageTwo({ ok: false } as Response)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Failed to load tasks')
+    expect(wrapper.findComponent(TaskSummary).exists()).toBe(false)
   })
 })

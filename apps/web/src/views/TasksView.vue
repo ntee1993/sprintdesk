@@ -24,96 +24,102 @@
       <p v-if="isLoading" role="status">Loading tasks...</p>
       <p v-if="fetchError" role="alert">{{ fetchError }}</p>
       <p v-if="membersError" role="alert">{{ membersError }}</p>
-      <TaskSummary :tasks="tasks" />
+      <template v-if="tasksReady">
+        <TaskSummary :tasks="tasks" />
 
-      <button @click="selectedView = 'list'" type="button" :aria-pressed="selectedView === 'list'">
-        List View
-      </button>
-      <button
-        @click="selectedView = 'kanban'"
-        type="button"
-        :aria-pressed="selectedView === 'kanban'"
-      >
-        Kanban View
-      </button>
-
-      <section class="task-list" v-show="selectedView === 'list'">
-        <div>
-          <label for="task-search">Search Tasks:</label>
-          <input
-            v-model="searchQuery"
-            id="task-search"
-            type="text"
-            placeholder="Search by title..."
-          />
-        </div>
-
-        <div>
-          <label for="task-filter">Filter Tasks:</label>
-          <select id="task-filter" v-model="selectedFilter">
-            <option value="all">All Statuses</option>
-            <option value="todo">To Do</option>
-            <option value="in_progress">In Progress</option>
-            <option value="done">Done</option>
-          </select>
-        </div>
-
-        <button type="button" @click="resetFilters" :disabled="!hasActiveFilters">
-          Reset Filters
+        <button
+          @click="selectedView = 'list'"
+          type="button"
+          :aria-pressed="selectedView === 'list'"
+        >
+          List View
+        </button>
+        <button
+          @click="selectedView = 'kanban'"
+          type="button"
+          :aria-pressed="selectedView === 'kanban'"
+        >
+          Kanban View
         </button>
 
-        <p v-if="filteredTasks.length === 0">No tasks found for the selected filters.</p>
-        <TaskCard
-          v-for="task in filteredTasks"
-          :key="task.id"
-          :task="task"
-          :assignee-name="getAssigneeName(task)"
-          @edit="handleEditTask"
-          @delete="deleteTask"
-        />
-      </section>
+        <section class="task-list" v-show="selectedView === 'list'">
+          <div>
+            <label for="task-search">Search Tasks:</label>
+            <input
+              v-model="searchQuery"
+              id="task-search"
+              type="text"
+              placeholder="Search by title..."
+            />
+          </div>
 
-      <section class="task-board" v-show="selectedView === 'kanban'">
-        <h2>Kanban Board</h2>
-        <div class="column">
-          <h3>Todo ({{ todoTasks.length }})</h3>
-          <p v-if="todoTasks.length === 0">No tasks in this column.</p>
+          <div>
+            <label for="task-filter">Filter Tasks:</label>
+            <select id="task-filter" v-model="selectedFilter">
+              <option value="all">All Statuses</option>
+              <option value="todo">To Do</option>
+              <option value="in_progress">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+
+          <button type="button" @click="resetFilters" :disabled="!hasActiveFilters">
+            Reset Filters
+          </button>
+
+          <p v-if="filteredTasks.length === 0">No tasks found for the selected filters.</p>
           <TaskCard
-            v-for="task in todoTasks"
+            v-for="task in filteredTasks"
             :key="task.id"
             :task="task"
             :assignee-name="getAssigneeName(task)"
             @edit="handleEditTask"
             @delete="deleteTask"
           />
-        </div>
+        </section>
 
-        <div class="column">
-          <h3>In Progress ({{ inProgressTasks.length }})</h3>
-          <p v-if="inProgressTasks.length === 0">No tasks in this column.</p>
-          <TaskCard
-            v-for="task in inProgressTasks"
-            :key="task.id"
-            :task="task"
-            :assignee-name="getAssigneeName(task)"
-            @edit="handleEditTask"
-            @delete="deleteTask"
-          />
-        </div>
+        <section class="task-board" v-show="selectedView === 'kanban'">
+          <h2>Kanban Board</h2>
+          <div class="column">
+            <h3>Todo ({{ todoTasks.length }})</h3>
+            <p v-if="todoTasks.length === 0">No tasks in this column.</p>
+            <TaskCard
+              v-for="task in todoTasks"
+              :key="task.id"
+              :task="task"
+              :assignee-name="getAssigneeName(task)"
+              @edit="handleEditTask"
+              @delete="deleteTask"
+            />
+          </div>
 
-        <div class="column">
-          <h3>Done ({{ doneTasks.length }})</h3>
-          <p v-if="doneTasks.length === 0">No tasks in this column.</p>
-          <TaskCard
-            v-for="task in doneTasks"
-            :key="task.id"
-            :task="task"
-            :assignee-name="getAssigneeName(task)"
-            @edit="handleEditTask"
-            @delete="deleteTask"
-          />
-        </div>
-      </section>
+          <div class="column">
+            <h3>In Progress ({{ inProgressTasks.length }})</h3>
+            <p v-if="inProgressTasks.length === 0">No tasks in this column.</p>
+            <TaskCard
+              v-for="task in inProgressTasks"
+              :key="task.id"
+              :task="task"
+              :assignee-name="getAssigneeName(task)"
+              @edit="handleEditTask"
+              @delete="deleteTask"
+            />
+          </div>
+
+          <div class="column">
+            <h3>Done ({{ doneTasks.length }})</h3>
+            <p v-if="doneTasks.length === 0">No tasks in this column.</p>
+            <TaskCard
+              v-for="task in doneTasks"
+              :key="task.id"
+              :task="task"
+              :assignee-name="getAssigneeName(task)"
+              @edit="handleEditTask"
+              @delete="deleteTask"
+            />
+          </div>
+        </section>
+      </template>
 
       <h2>Create New Task</h2>
       <form @submit.prevent="addTask">
@@ -174,6 +180,7 @@ const taskStore = useTaskStore()
 const projectStore = useProjectStore()
 const { tasks, isLoading, fetchError } = storeToRefs(taskStore)
 const selectedProjectId = ref<number | null>(null)
+const tasksReady = ref(false)
 const selectedAssigneeId = ref<number | null>(null)
 const members = ref<ProjectMember[]>([])
 const membersError = ref<string | null>(null)
@@ -200,10 +207,15 @@ watch(
     selectedAssigneeId.value = null
     members.value = []
     membersError.value = null
+    tasksReady.value = false
     taskStore.clearTasks()
 
     if (projectId !== null) {
-      void taskStore.fetchTasks(projectId)
+      void taskStore.fetchTasks(projectId).then(() => {
+        if (requestId === latestMembersRequestId && taskStore.fetchError === null) {
+          tasksReady.value = true
+        }
+      })
       void getProjectMembers(projectId)
         .then((result) => {
           if (requestId === latestMembersRequestId) members.value = result
