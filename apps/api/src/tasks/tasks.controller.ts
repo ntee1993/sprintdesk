@@ -69,7 +69,7 @@ export class TasksController {
       throw new ForbiddenException('Insufficient project permission');
     }
 
-    return this.tasksService.create(body);
+    return this.tasksService.create(body, req.user.id);
   }
 
   @Patch(':id')

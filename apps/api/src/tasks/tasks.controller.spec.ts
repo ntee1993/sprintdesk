@@ -130,7 +130,7 @@ describe('TasksController', () => {
       expect(
         projectAuthorization.getProjectRole,
       ).toHaveBeenCalledExactlyOnceWith(input.projectId, 1);
-      expect(tasksService.create).toHaveBeenCalledExactlyOnceWith(input);
+      expect(tasksService.create).toHaveBeenCalledExactlyOnceWith(input, 1);
       expect(result).toEqual(createdTask);
     });
   });

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ProjectAuthorizationService } from '../auth/project-authorization.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { lockProject } from '../prisma/project-lock.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AddProjectMemberDto } from './dto/add-project-member.dto.js';
 import type { UpdateProjectMemberRoleDto } from './dto/update-project-member-role.dto.js';
@@ -137,13 +138,19 @@ export class ProjectsService {
     }
 
     try {
-      return await this.prisma.projectMember.update({
-        where: {
-          projectId_userId: { projectId, userId: memberId },
-          project: { is: { ownerId: userId } },
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await lockProject(tx, projectId);
+          return tx.projectMember.update({
+            where: {
+              projectId_userId: { projectId, userId: memberId },
+              project: { is: { ownerId: userId } },
+            },
+            data: { role: dto.role },
+          });
         },
-        data: { role: dto.role },
-      });
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+      );
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -171,21 +178,25 @@ export class ProjectsService {
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const member = await tx.projectMember.delete({
-          where: {
-            projectId_userId: { projectId, userId: memberId },
-            project: { is: { ownerId: userId } },
-          },
-        });
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await lockProject(tx, projectId);
+          const member = await tx.projectMember.delete({
+            where: {
+              projectId_userId: { projectId, userId: memberId },
+              project: { is: { ownerId: userId } },
+            },
+          });
 
-        await tx.task.updateMany({
-          where: { projectId, assigneeId: memberId },
-          data: { assigneeId: null },
-        });
+          await tx.task.updateMany({
+            where: { projectId, assigneeId: memberId },
+            data: { assigneeId: null },
+          });
 
-        return member;
-      });
+          return member;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+      );
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

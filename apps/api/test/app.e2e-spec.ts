@@ -94,6 +94,7 @@ describe('App (e2e)', () => {
   let createProjectMock: ReturnType<typeof vi.fn>;
   let findProjectsMock: ReturnType<typeof vi.fn>;
   let findProjectMembersMock: ReturnType<typeof vi.fn>;
+  let findWritableProjectMock: ReturnType<typeof vi.fn>;
   let findUserMock: ReturnType<typeof vi.fn>;
   let createMemberMock: ReturnType<typeof vi.fn>;
   let updateMemberMock: ReturnType<typeof vi.fn>;
@@ -122,6 +123,7 @@ describe('App (e2e)', () => {
       ownerId: 1,
     });
     findProjectsMock = vi.fn().mockResolvedValue([]);
+    findWritableProjectMock = vi.fn().mockResolvedValue({ id: 1 });
     findProjectMembersMock = vi.fn().mockResolvedValue({
       owner: { id: 1, name: 'Owner', email: 'owner@example.test' },
       memberships: [
@@ -153,8 +155,29 @@ describe('App (e2e)', () => {
     });
     unassignTasksMock = vi.fn().mockResolvedValue({ count: 0 });
     const txMock = {
-      projectMember: { delete: deleteMemberMock },
-      task: { updateMany: unassignTasksMock },
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 1 }]),
+      project: {
+        findFirst: (args: any) =>
+          args.where.OR?.[1]?.memberships?.some?.role === 'EDITOR'
+            ? findWritableProjectMock(args)
+            : findProjectMembersMock(args),
+      },
+      projectMember: { delete: deleteMemberMock, update: updateMemberMock },
+      task: {
+        updateMany: unassignTasksMock,
+        create: (...args: any[]) => createMock(...args),
+        updateManyAndReturn: (...args: any[]) => updateMock(...args),
+        deleteMany: (...args: any[]) => deleteMock(...args),
+        findFirst: ({ where }: any) =>
+          Promise.resolve(
+            mockTasks.find(
+              (task) =>
+                task.id === where.id &&
+                (!where.project ||
+                  matchesProjectPermission(task, where.project)),
+            ) ?? null,
+          ),
+      },
     };
     transactionMock = vi
       .fn()
@@ -1176,6 +1199,28 @@ describe('App (e2e)', () => {
   // ---------------------------------------------------------------------------
 
   describe('POST /tasks', () => {
+    it('rejects task creation when transaction permission is revoked', async () => {
+      findWritableProjectMock.mockResolvedValueOnce(null);
+
+      await request(app.getHttpServer())
+        .post('/tasks')
+        .set('Cookie', authenticatedSessionCookie)
+        .send(validTaskInput)
+        .expect(403);
+
+      expect(findWritableProjectMock).toHaveBeenCalledExactlyOnceWith({
+        where: {
+          id: validTaskInput.projectId,
+          OR: [
+            { ownerId: 1 },
+            { memberships: { some: { userId: 1, role: 'EDITOR' } } },
+          ],
+        },
+        select: { id: true },
+      });
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
     it('allows an owner to create a task', async () => {
       getProjectRoleMock.mockResolvedValueOnce('OWNER');
 

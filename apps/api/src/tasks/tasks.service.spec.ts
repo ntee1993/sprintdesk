@@ -51,12 +51,23 @@ describe('TasksService', () => {
       .mockResolvedValue([{ ...task, status: 'done' }]);
     deleteManyMock = vi.fn().mockResolvedValue({ count: 1 });
 
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 1 }]),
+      project: { findFirst: vi.fn().mockResolvedValue({ id: 1 }) },
+      task: {
+        findFirst: findFirstMock,
+        create: createMock,
+        updateManyAndReturn: updateManyAndReturnMock,
+        deleteMany: deleteManyMock,
+      },
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TasksService,
         {
           provide: PrismaService,
           useValue: {
+            $transaction: (fn: (tx: typeof tx) => unknown) => fn(tx),
             project: { findFirst: vi.fn().mockResolvedValue({ id: 1 }) },
             task: {
               findMany: findManyMock,
@@ -209,7 +220,7 @@ describe('TasksService', () => {
     it('creates the task data supplied by the authorized controller', async () => {
       createMock.mockResolvedValueOnce({ id: 3, ...newTask });
 
-      await expect(tasksService.create(newTask)).resolves.toEqual({
+      await expect(tasksService.create(newTask, userId)).resolves.toEqual({
         id: 3,
         ...newTask,
       });
@@ -219,7 +230,7 @@ describe('TasksService', () => {
     it('maps invalid task relations to BadRequestException', async () => {
       createMock.mockRejectedValueOnce(foreignKeyError);
 
-      await expect(tasksService.create(newTask)).rejects.toThrow(
+      await expect(tasksService.create(newTask, userId)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -259,7 +270,7 @@ describe('TasksService', () => {
       await expect(tasksService.remove(1, userId)).resolves.toEqual(task);
 
       const where = { id: 1, ...writableProjectFilter };
-      expect(findFirstMock).toHaveBeenCalledExactlyOnceWith({ where });
+      expect(findFirstMock).toHaveBeenCalledWith({ where });
       expect(deleteManyMock).toHaveBeenCalledExactlyOnceWith({ where });
     });
 
