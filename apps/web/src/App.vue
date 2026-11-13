@@ -2,12 +2,8 @@
 import { onMounted } from 'vue'
 import LoginForm from '@/components/LoginForm.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useProjectStore } from '@/stores/project'
-import { useTaskStore } from '@/stores/task'
 
 const auth = useAuthStore()
-const projectStore = useProjectStore()
-const taskStore = useTaskStore()
 
 onMounted(() => {
   void auth.initialize().catch(() => {
@@ -18,8 +14,6 @@ onMounted(() => {
 async function handleSignOut() {
   try {
     await auth.signOut()
-    taskStore.clearTasks()
-    projectStore.clearProjects()
   } catch {
     // The store exposes the error to the UI.
   }

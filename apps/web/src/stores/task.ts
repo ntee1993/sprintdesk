@@ -15,9 +15,15 @@ export const useTaskStore = defineStore('tasks', () => {
   const isLoading = ref(false)
   const fetchError = ref<string | null>(null)
   let latestFetchId = 0
+  let generation = 0
+  let pending = 0
+  let fetchPending = false
 
   async function fetchTasks(projectId?: number) {
     const requestId = ++latestFetchId
+    if (fetchPending) pending--
+    fetchPending = true
+    pending++
 
     if (requestId === latestFetchId) {
       isLoading.value = true
@@ -56,57 +62,73 @@ export const useTaskStore = defineStore('tasks', () => {
       }
     } finally {
       if (requestId === latestFetchId) {
-        isLoading.value = false
+        fetchPending = false
+        isLoading.value = --pending > 0
       }
     }
   }
 
   async function addTask(input: Parameters<typeof createTask>[0]) {
+    const requestGeneration = generation
+    pending++
     isLoading.value = true
     fetchError.value = null
 
     try {
       const createdTask = await createTask(input)
-      tasks.value.push(createdTask)
+      if (requestGeneration === generation) tasks.value.push(createdTask)
     } catch (error) {
-      fetchError.value = error instanceof Error ? error.message : 'Failed to create task'
+      if (requestGeneration === generation)
+        fetchError.value = error instanceof Error ? error.message : 'Failed to create task'
       throw error
     } finally {
-      isLoading.value = false
+      if (requestGeneration === generation) isLoading.value = --pending > 0
     }
   }
 
   async function deleteTask(taskId: Task['id']) {
+    const requestGeneration = generation
+    pending++
     isLoading.value = true
     fetchError.value = null
 
     try {
       await deleteTaskApi(taskId)
-      tasks.value = tasks.value.filter((task) => task.id !== taskId)
+      if (requestGeneration === generation)
+        tasks.value = tasks.value.filter((task) => task.id !== taskId)
     } catch (error) {
-      fetchError.value = error instanceof Error ? error.message : 'Failed to delete task'
+      if (requestGeneration === generation)
+        fetchError.value = error instanceof Error ? error.message : 'Failed to delete task'
       throw error
     } finally {
-      isLoading.value = false
+      if (requestGeneration === generation) isLoading.value = --pending > 0
     }
   }
 
   async function updateTask(taskId: Task['id'], changes: TaskChanges) {
+    const requestGeneration = generation
+    pending++
     isLoading.value = true
     fetchError.value = null
 
     try {
       const updatedTask = await updateTaskApi(taskId, changes)
-      tasks.value = tasks.value.map((task) => (task.id === taskId ? updatedTask : task))
+      if (requestGeneration === generation) {
+        tasks.value = tasks.value.map((task) => (task.id === taskId ? updatedTask : task))
+      }
     } catch (error) {
-      fetchError.value = error instanceof Error ? error.message : 'Failed to update task'
+      if (requestGeneration === generation)
+        fetchError.value = error instanceof Error ? error.message : 'Failed to update task'
       throw error
     } finally {
-      isLoading.value = false
+      if (requestGeneration === generation) isLoading.value = --pending > 0
     }
   }
 
   function clearTasks() {
+    generation++
+    pending = 0
+    fetchPending = false
     latestFetchId++
     tasks.value = []
     fetchError.value = null
