@@ -191,6 +191,155 @@ describe('Task details comments', () => {
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
+  it('shows a temporary comment immediately, blocks duplicate submission, and replaces it with the server response', async () => {
+    const pending = deferred<TaskComment>()
+    vi.mocked(createTaskComment).mockReturnValue(pending.promise)
+    const { wrapper } = setup()
+    await flushPromises()
+    await wrapper.get('#new-comment').setValue('Pending comment')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.text()).toContain('Pending comment')
+    expect(wrapper.text()).toContain('Saving comment...')
+    await wrapper.get('form').trigger('submit')
+    expect(createTaskComment).toHaveBeenCalledOnce()
+    pending.resolve({ ...comment, id: 55, content: 'Server comment' })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Server comment')
+    expect(wrapper.text()).not.toContain('Pending comment')
+    expect(wrapper.findAll('li')).toHaveLength(1)
+  })
+
+  it('removes the temporary comment and retains input on create failure', async () => {
+    const pending = deferred<TaskComment>()
+    vi.mocked(getTaskComments).mockResolvedValue([comment])
+    vi.mocked(createTaskComment).mockReturnValue(pending.promise)
+    const { wrapper } = setup()
+    await flushPromises()
+    await wrapper.get('#new-comment').setValue('Temporary comment')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.text()).toContain('Temporary comment')
+    pending.reject(new Error('Create failed'))
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Temporary comment')
+    expect(wrapper.text()).toContain('Original')
+    expect((wrapper.get('#new-comment').element as HTMLTextAreaElement).value).toBe(
+      'Temporary comment',
+    )
+    expect(wrapper.get('[role="alert"]').text()).toBe('Create failed')
+  })
+
+  it('updates immediately and restores only the old content on edit failure', async () => {
+    const pending = deferred<TaskComment>()
+    vi.mocked(getTaskComments).mockResolvedValue([comment])
+    vi.mocked(updateTaskComment).mockReturnValue(pending.promise)
+    const { wrapper } = setup()
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Edit comment')!
+      .trigger('click')
+    await wrapper.get('#edit-comment-1').setValue('Optimistic edit')
+    await wrapper.findAll('form')[0]!.trigger('submit')
+    expect(wrapper.text()).toContain('Optimistic edit')
+    pending.reject(new Error('Edit failed'))
+    await flushPromises()
+    expect((wrapper.get('#edit-comment-1').element as HTMLTextAreaElement).value).toBe(
+      'Optimistic edit',
+    )
+    expect(wrapper.get('[role="alert"]').text()).toBe('Edit failed')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Cancel')!
+      .trigger('click')
+    expect(wrapper.text()).toContain('Original')
+  })
+
+  it('preserves the edit draft for a successful retry', async () => {
+    vi.mocked(getTaskComments).mockResolvedValue([comment])
+    vi.mocked(updateTaskComment)
+      .mockRejectedValueOnce(new Error('Edit failed'))
+      .mockResolvedValueOnce({ ...comment, content: 'Retry draft' })
+    const { wrapper } = setup()
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Edit comment')!
+      .trigger('click')
+    await wrapper.get('#edit-comment-1').setValue('  Retry draft  ')
+    await wrapper.findAll('form')[0]!.trigger('submit')
+    await flushPromises()
+    expect((wrapper.get('#edit-comment-1').element as HTMLTextAreaElement).value).toBe(
+      '  Retry draft  ',
+    )
+    await wrapper.findAll('form')[0]!.trigger('submit')
+    await flushPromises()
+    expect(updateTaskComment).toHaveBeenCalledTimes(2)
+    expect(updateTaskComment).toHaveBeenLastCalledWith(1, 1, 'Retry draft')
+    expect(wrapper.text()).toContain('Retry draft')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('replaces an optimistic edit with the server response', async () => {
+    const pending = deferred<TaskComment>()
+    vi.mocked(getTaskComments).mockResolvedValue([comment])
+    vi.mocked(updateTaskComment).mockReturnValue(pending.promise)
+    const { wrapper } = setup()
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Edit comment')!
+      .trigger('click')
+    await wrapper.get('#edit-comment-1').setValue('Optimistic edit')
+    await wrapper.findAll('form')[0]!.trigger('submit')
+    expect(wrapper.text()).toContain('Optimistic edit')
+    pending.resolve({ ...comment, content: 'Server edit' })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Server edit')
+  })
+
+  it('hides a deleted comment immediately and restores it in order on failure', async () => {
+    const pending = deferred<void>()
+    vi.mocked(getTaskComments).mockResolvedValue([comment, { ...comment, id: 2, content: 'Other' }])
+    vi.mocked(deleteTaskComment).mockReturnValue(pending.promise)
+    const { wrapper } = setup()
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Delete comment')!
+      .trigger('click')
+    expect(wrapper.text()).not.toContain('Original')
+    expect(wrapper.text()).toContain('Other')
+    expect(wrapper.get('[role="status"]').text()).toBe('Deleting comment...')
+    pending.reject(new Error('Delete failed'))
+    await flushPromises()
+    expect(wrapper.findAll('li').map((row) => row.text())).toEqual([
+      expect.stringContaining('Original'),
+      expect.stringContaining('Other'),
+    ])
+    expect(wrapper.get('[role="alert"]').text()).toBe('Delete failed')
+  })
+
+  it('does not restore a deleted comment after switching tasks', async () => {
+    const pending = deferred<void>()
+    vi.mocked(getTaskComments)
+      .mockResolvedValueOnce([comment])
+      .mockResolvedValueOnce([{ ...comment, taskId: 2, content: 'New task' }])
+    vi.mocked(deleteTaskComment).mockReturnValue(pending.promise)
+    const { wrapper } = setup()
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Delete comment')!
+      .trigger('click')
+    await wrapper.setProps({ task: { ...task, id: 2 } })
+    await flushPromises()
+    pending.reject(new Error('Old delete failed'))
+    await flushPromises()
+    expect(wrapper.text()).toContain('New task')
+    expect(wrapper.text()).not.toContain('Original')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
   it('shows API errors without losing existing comments', async () => {
     vi.mocked(getTaskComments).mockResolvedValue([comment])
     vi.mocked(deleteTaskComment).mockRejectedValue(new Error('Delete failed'))
