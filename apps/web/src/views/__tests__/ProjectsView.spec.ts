@@ -43,6 +43,17 @@ describe('ProjectsView members', () => {
     return wrapper
   }
 
+  it('opens member management from a project card', async () => {
+    const pinia = createPinia()
+    useAuthStore(pinia).user = { id: 1, name: 'Alice', email: 'alice@example.test' }
+    const wrapper = mount(ProjectsView, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.get('button[aria-label="Manage members for SprintDesk"]').trigger('click')
+    await flushPromises()
+    expect(getProjectMembers).toHaveBeenCalledExactlyOnceWith(1)
+    expect(wrapper.text()).toContain('Alice — alice@example.test — OWNER')
+  })
+
   it('loads and displays members when a project is selected', async () => {
     vi.mocked(getProjectMembers).mockResolvedValue([owner, editor])
 

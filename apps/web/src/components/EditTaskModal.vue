@@ -1,6 +1,7 @@
 <template>
   <BaseModal title="Edit Task" @close="emit('close')">
     <form @submit.prevent="handleSave">
+      <p v-if="error" role="alert">{{ error }}</p>
       <label for="draft-title">Task Title</label>
       <input
         type="text"
@@ -36,7 +37,9 @@
         </option>
       </select>
 
-      <button type="submit">Save Changes</button>
+      <button type="submit" :disabled="loading">
+        {{ loading ? 'Saving...' : 'Save Changes' }}
+      </button>
     </form>
   </BaseModal>
 </template>
@@ -50,6 +53,8 @@ import BaseModal from './BaseModal.vue'
 const props = defineProps<{
   task: Task
   members: ProjectMember[]
+  loading?: boolean
+  error?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -71,6 +76,7 @@ watch(draftTitle, (newValue) => {
 })
 
 function handleSave() {
+  if (props.loading) return
   const title = draftTitle.value.trim()
 
   if (title === '') {

@@ -1,9 +1,21 @@
 <template>
   <BaseModal title="Task Details" @close="emit('close')">
-    <h3>{{ task.title }}</h3>
-    <p>{{ task.status }}</p>
-    <section aria-label="Comments">
-      <h3>Comments ({{ comments.length }})</h3>
+    <div class="task-detail-heading">
+      <div>
+        <span class="detail-id">TASK #{{ task.id }}</span>
+        <h3>{{ task.title }}</h3>
+      </div>
+      <span class="detail-status">{{ task.status.replace('_', ' ') }}</span>
+    </div>
+    <section class="comments" aria-label="Comments">
+      <div class="comments-header">
+        <div>
+          <p class="comments-kicker">CONVERSATION</p>
+          <h3>
+            Comments <span>{{ comments.length }}</span>
+          </h3>
+        </div>
+      </div>
       <p v-if="loading" role="status">Loading comments...</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <p v-if="busy" role="status">
@@ -11,11 +23,16 @@
       </p>
       <p v-if="!loading && !error && comments.length === 0">No comments yet.</p>
       <ul>
-        <li v-for="comment in comments" :key="comment.id">
-          <strong>{{ comment.author.name }}</strong>
-          <time :datetime="comment.createdAt">{{
-            new Date(comment.createdAt).toLocaleString()
-          }}</time>
+        <li v-for="comment in comments" :key="comment.id" class="comment-row">
+          <div class="comment-meta">
+            <span class="comment-avatar" aria-hidden="true">{{
+              comment.author.name.charAt(0).toUpperCase()
+            }}</span
+            ><strong>{{ comment.author.name }}</strong>
+            <time :datetime="comment.createdAt">{{
+              new Date(comment.createdAt).toLocaleString()
+            }}</time>
+          </div>
           <template v-if="editingId === comment.id">
             <form @submit.prevent="saveEdit(comment.id)">
               <label :for="`edit-comment-${comment.id}`">Edit comment</label>
@@ -40,9 +57,15 @@
           </template>
         </li>
       </ul>
-      <form @submit.prevent="create">
+      <form class="comment-compose" @submit.prevent="create">
         <label for="new-comment">Write a comment</label>
-        <textarea id="new-comment" v-model="content" maxlength="2000" required />
+        <textarea
+          id="new-comment"
+          v-model="content"
+          maxlength="2000"
+          placeholder="Share an update with your team..."
+          required
+        />
         <button type="submit" :disabled="busy || loading || !content.trim()">Add comment</button>
       </form>
     </section>
@@ -225,3 +248,106 @@ async function remove(commentId: number) {
   }
 }
 </script>
+
+<style scoped>
+.task-detail-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.task-detail-heading h3 {
+  margin: 5px 0 0;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.detail-id,
+.comments-kicker {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  font-weight: 750;
+  color: var(--color-muted);
+}
+.detail-status {
+  flex: none;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+.comments {
+  border-top: 1px solid var(--color-border);
+  padding-top: 18px;
+}
+.comments-header h3 {
+  margin: 2px 0;
+  font-size: 16px;
+}
+.comments-header h3 span {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.comments-kicker {
+  margin: 0;
+}
+.comments ul {
+  margin: 8px 0 18px;
+}
+.comment-row {
+  overflow-wrap: anywhere;
+}
+.comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.comment-meta time {
+  margin-left: auto;
+}
+.comment-avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 10px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+.comment-row p {
+  margin: 8px 0 8px 41px;
+  white-space: pre-wrap;
+}
+.comment-row button {
+  margin: 0 6px 3px 0;
+  font-size: 12px;
+}
+.comment-compose {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+.comment-compose textarea {
+  width: 100%;
+  max-width: none;
+  min-height: 90px;
+}
+.comment-compose button {
+  align-self: flex-end;
+}
+@media (max-width: 480px) {
+  .task-detail-heading {
+    flex-wrap: wrap;
+  }
+  .comment-meta {
+    flex-wrap: wrap;
+  }
+  .comment-meta time {
+    flex-basis: 100%;
+    margin-left: 41px;
+  }
+}
+</style>

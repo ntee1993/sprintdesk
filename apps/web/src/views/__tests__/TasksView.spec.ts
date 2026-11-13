@@ -6,6 +6,13 @@ import TasksView from '../TasksView.vue'
 import TaskCard from '../../components/TaskCard.vue'
 import TaskSummary from '../../components/TaskSummary.vue'
 import { useTaskStore } from '../../stores/task'
+import { useAuthStore } from '../../stores/auth'
+
+function authenticatedPinia() {
+  const pinia = createPinia()
+  useAuthStore(pinia).user = { id: 1, name: 'Alice', email: 'alice@example.test' }
+  return pinia
+}
 
 describe('TasksView', () => {
   beforeEach(() => {
@@ -22,10 +29,16 @@ describe('TasksView', () => {
               ]
             }
             if (url.endsWith('/projects/1/members')) {
-              return [{ userId: 2, name: 'Bob', email: 'bob@example.test', role: 'EDITOR' }]
+              return [
+                { userId: 1, name: 'Alice', email: 'alice@example.test', role: 'OWNER' },
+                { userId: 2, name: 'Bob', email: 'bob@example.test', role: 'EDITOR' },
+              ]
             }
             if (url.endsWith('/projects/2/members')) {
-              return [{ userId: 3, name: 'Carol', email: 'carol@example.test', role: 'VIEWER' }]
+              return [
+                { userId: 1, name: 'Alice', email: 'alice@example.test', role: 'OWNER' },
+                { userId: 3, name: 'Carol', email: 'carol@example.test', role: 'VIEWER' },
+              ]
             }
             if (options?.method === 'POST') {
               return { id: 42, ...JSON.parse(options.body as string) }
@@ -44,8 +57,153 @@ describe('TasksView', () => {
     vi.unstubAllGlobals()
   })
 
+  it.each([
+    ['OWNER', 1],
+    ['EDITOR', 2],
+    ['VIEWER', 3],
+    ['UNKNOWN', 4],
+  ])('shows mutation actions only for authorized role %s', async (role, id) => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((url, options) => {
+      if (String(url).endsWith('/projects/1/members')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ userId: id, name: 'User', email: 'user@example.test', role }],
+        } as Response)
+      }
+      return originalFetch(url, options)
+    })
+    const pinia = authenticatedPinia()
+    useAuthStore(pinia).user = { id, name: 'User', email: 'user@example.test' }
+    const wrapper = mount(TasksView, { global: { plugins: [pinia] } })
+    await flushPromises()
+    useTaskStore(pinia).tasks = [{ id: 7, title: 'Task', status: 'todo', priority: 'high' }]
+    await wrapper.vm.$nextTick()
+    const labels = wrapper
+      .getComponent(TaskCard)
+      .findAll('button')
+      .map((button) => button.text())
+    expect(labels).toContain('Details')
+    expect(labels.includes('Edit')).toBe(role === 'OWNER' || role === 'EDITOR')
+    expect(labels.includes('Delete')).toBe(role === 'OWNER' || role === 'EDITOR')
+    expect(wrapper.find('#task-title').exists()).toBe(role === 'OWNER' || role === 'EDITOR')
+  })
+
+  it('hides mutation actions while project membership is loading', async () => {
+    let resolveMembers!: (response: Response) => void
+    const pending = new Promise<Response>((resolve) => {
+      resolveMembers = resolve
+    })
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((url, options) =>
+      String(url).endsWith('/projects/1/members') ? pending : originalFetch(url, options),
+    )
+    const pinia = authenticatedPinia()
+    const wrapper = mount(TasksView, { global: { plugins: [pinia] } })
+    await flushPromises()
+    useTaskStore(pinia).tasks = [{ id: 7, title: 'Task', status: 'todo', priority: 'high' }]
+    await wrapper.vm.$nextTick()
+    const labels = wrapper
+      .getComponent(TaskCard)
+      .findAll('button')
+      .map((button) => button.text())
+    expect(labels).toContain('Details')
+    expect(labels).not.toContain('Edit')
+    expect(labels).not.toContain('Delete')
+    expect(wrapper.find('#task-title').exists()).toBe(false)
+    resolveMembers({
+      ok: true,
+      json: async () => [{ userId: 1, name: 'Alice', email: 'alice@example.test', role: 'OWNER' }],
+    } as Response)
+    await flushPromises()
+    expect(wrapper.getComponent(TaskCard).text()).toContain('Edit')
+    wrapper.unmount()
+  })
+
+  it('shows update pending, prevents duplicate saves and permits retry after failure', async () => {
+    let rejectUpdate!: (reason: Error) => void
+    const pending = new Promise<Response>((_resolve, reject) => {
+      rejectUpdate = reject
+    })
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((url, options) => {
+      if (options?.method === 'PATCH') return pending
+      return originalFetch(url, options)
+    })
+    const pinia = authenticatedPinia()
+    const wrapper = mount(TasksView, {
+      global: { plugins: [pinia], stubs: { BaseModal: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+    useTaskStore(pinia).tasks = [{ id: 7, title: 'Original', status: 'todo', priority: 'high' }]
+    await wrapper.vm.$nextTick()
+    await wrapper
+      .getComponent(TaskCard)
+      .findAll('button')
+      .find((b) => b.text() === 'Edit')!
+      .trigger('click')
+    await wrapper.get('#draft-title').setValue('Changed')
+    const form = wrapper.get('#draft-title').element.closest('form')!
+    await wrapper.getComponent({ name: 'EditTaskModal' }).find('form').trigger('submit')
+    expect(form.textContent).toContain('Saving...')
+    expect(form.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(true)
+    await wrapper.getComponent({ name: 'EditTaskModal' }).find('form').trigger('submit')
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'PATCH'),
+    ).toHaveLength(1)
+    rejectUpdate(new Error('Update failed'))
+    await flushPromises()
+    expect(wrapper.text()).toContain('Update failed')
+    expect((wrapper.get('#draft-title').element as HTMLInputElement).value).toBe('Changed')
+    expect(form.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false)
+    vi.mocked(fetch).mockImplementation((url, options) => {
+      if (options?.method === 'PATCH')
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ id: 7, title: 'Changed', status: 'todo', priority: 'high' }),
+        } as Response)
+      return originalFetch(url, options)
+    })
+    await wrapper.getComponent({ name: 'EditTaskModal' }).find('form').trigger('submit')
+    await flushPromises()
+    expect(useTaskStore(pinia).tasks[0]?.title).toBe('Changed')
+    expect(wrapper.find('#draft-title').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each(['project', 'session'])('discards update errors after a %s switch', async (change) => {
+    let rejectUpdate!: (error: Error) => void
+    const pending = new Promise<Response>((_resolve, reject) => {
+      rejectUpdate = reject
+    })
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((url, options) =>
+      options?.method === 'PATCH' ? pending : originalFetch(url, options),
+    )
+    const pinia = authenticatedPinia()
+    const wrapper = mount(TasksView, {
+      global: { plugins: [pinia], stubs: { BaseModal: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+    useTaskStore(pinia).tasks = [{ id: 7, title: 'Original', status: 'todo', priority: 'high' }]
+    await wrapper.vm.$nextTick()
+    await wrapper
+      .getComponent(TaskCard)
+      .findAll('button')
+      .find((b) => b.text() === 'Edit')!
+      .trigger('click')
+    await wrapper.getComponent({ name: 'EditTaskModal' }).find('form').trigger('submit')
+    if (change === 'project') await wrapper.get('#project-select').setValue('2')
+    else useAuthStore(pinia).sessionGeneration++
+    rejectUpdate(new Error('Stale update error'))
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Stale update error')
+    expect(wrapper.find('#draft-title').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('rejects a task with an empty title', async () => {
-    const pinia = createPinia()
+    const pinia = authenticatedPinia()
     const wrapper = mount(TasksView, {
       global: {
         plugins: [pinia],
@@ -63,7 +221,7 @@ describe('TasksView', () => {
   })
 
   it('creates a new task with valid input', async () => {
-    const pinia = createPinia()
+    const pinia = authenticatedPinia()
     const wrapper = mount(TasksView, {
       global: {
         plugins: [pinia],
@@ -105,7 +263,7 @@ describe('TasksView', () => {
   })
 
   it('clears validation error when a valid title is entered', async () => {
-    const pinia = createPinia()
+    const pinia = authenticatedPinia()
     const wrapper = mount(TasksView, {
       global: {
         plugins: [pinia],
@@ -129,7 +287,7 @@ describe('TasksView', () => {
   })
 
   it('loads and displays members of the selected project', async () => {
-    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    const wrapper = mount(TasksView, { global: { plugins: [authenticatedPinia()] } })
     await flushPromises()
 
     expect(wrapper.get('#task-assignee').text()).toContain('Bob (EDITOR)')
@@ -144,7 +302,7 @@ describe('TasksView', () => {
   })
 
   it('creates a task with the selected numeric assignee ID', async () => {
-    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    const wrapper = mount(TasksView, { global: { plugins: [authenticatedPinia()] } })
     await flushPromises()
 
     await wrapper.get('#task-title').setValue('Assigned task')
@@ -174,7 +332,7 @@ describe('TasksView', () => {
   })
 
   it('opens task details and loads comments for the selected task', async () => {
-    const pinia = createPinia()
+    const pinia = authenticatedPinia()
     const wrapper = mount(TasksView, {
       global: { plugins: [pinia], stubs: { BaseModal: { template: '<div><slot /></div>' } } },
     })
@@ -196,7 +354,7 @@ describe('TasksView', () => {
   })
 
   it('sends null when editing a task to be unassigned', async () => {
-    const pinia = createPinia()
+    const pinia = authenticatedPinia()
     const wrapper = mount(TasksView, {
       global: { plugins: [pinia], stubs: { BaseModal: { template: '<div><slot /></div>' } } },
     })
@@ -258,7 +416,7 @@ describe('TasksView', () => {
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    const wrapper = mount(TasksView, { global: { plugins: [authenticatedPinia()] } })
     await flushPromises()
 
     const taskRequests = mockFetch.mock.calls
@@ -311,7 +469,7 @@ describe('TasksView', () => {
       }),
     )
 
-    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    const wrapper = mount(TasksView, { global: { plugins: [authenticatedPinia()] } })
     await flushPromises()
     await wrapper.get('#project-select').setValue('2')
     await flushPromises()
@@ -355,7 +513,7 @@ describe('TasksView', () => {
       }),
     )
 
-    const wrapper = mount(TasksView, { global: { plugins: [createPinia()] } })
+    const wrapper = mount(TasksView, { global: { plugins: [authenticatedPinia()] } })
     await flushPromises()
     expect(wrapper.text()).toContain('Loading tasks')
     expect(wrapper.findComponent(TaskSummary).exists()).toBe(false)

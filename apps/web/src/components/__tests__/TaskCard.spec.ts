@@ -27,6 +27,14 @@ describe('TaskCard', () => {
     expect(wrapper.text()).toContain('Assignee: Unassigned')
   })
 
+  it('shows task status and priority labels', () => {
+    const wrapper = mount(TaskCard, {
+      props: { task: { ...task, status: 'in_progress', priority: 'urgent' } },
+    })
+    expect(wrapper.get('[data-status="in_progress"]').text()).toBe('in progress')
+    expect(wrapper.get('[data-priority="urgent"]').text()).toBe('urgent')
+  })
+
   it('displays the task title', () => {
     const wrapper = mount(TaskCard, {
       props: {
@@ -40,6 +48,7 @@ describe('TaskCard', () => {
   it('emits the task ID when Edit is clicked', async () => {
     const wrapper = mount(TaskCard, {
       props: {
+        canEdit: true,
         task,
       },
     })
@@ -58,6 +67,7 @@ describe('TaskCard', () => {
   it('emits the task ID when Delete is clicked', async () => {
     const wrapper = mount(TaskCard, {
       props: {
+        canEdit: true,
         task,
       },
     })
