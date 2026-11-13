@@ -168,8 +168,14 @@ async function handleRemoveMember(member: ProjectMember) {
 </script>
 
 <template>
-  <main>
-    <h1>Projects</h1>
+  <main id="main-content" tabindex="-1" class="page projects-page">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">YOUR WORKSPACE</p>
+        <h1>Projects</h1>
+        <p class="page-description">Organize your work and collaborate with your team.</p>
+      </div>
+    </div>
 
     <form @submit.prevent="handleCreate">
       <label for="project-name">Project name</label>

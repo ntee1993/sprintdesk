@@ -1,13 +1,30 @@
 <template>
-  <div>
-    <h2>Task Summary</h2>
-
-    <p>Total Tasks: {{ totalTasks }}</p>
-    <p>To Do: {{ todoCount }}</p>
-    <p>In Progress: {{ inProgressCount }}</p>
-    <p>Completed: {{ completedCount }}</p>
-    <p>Urgent: {{ urgentCount }}</p>
-  </div>
+  <section class="summary">
+    <div class="summary-heading">
+      <div>
+        <p class="eyebrow">AT A GLANCE</p>
+        <h2>Task Summary</h2>
+      </div>
+      <span class="summary-caption">Current task selection</span>
+    </div>
+    <div class="summary-grid">
+      <p>
+        <span>Total Tasks:</span> <strong>{{ totalTasks }}</strong>
+      </p>
+      <p>
+        <span>To Do:</span> <strong>{{ todoCount }}</strong>
+      </p>
+      <p>
+        <span>In Progress:</span> <strong>{{ inProgressCount }}</strong>
+      </p>
+      <p>
+        <span>Completed:</span> <strong>{{ completedCount }}</strong>
+      </p>
+      <p>
+        <span>Urgent:</span> <strong>{{ urgentCount }}</strong>
+      </p>
+    </div>
+  </section>
 </template>
 
 <script setup lang="ts">

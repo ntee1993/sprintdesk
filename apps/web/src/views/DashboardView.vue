@@ -1,7 +1,12 @@
 <template>
-  <main>
-    <h1>Dashboard</h1>
-    <p>SprintDesk project overview</p>
+  <main id="main-content" tabindex="-1" class="page dashboard-page">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">YOUR WORKSPACE</p>
+        <h1>Dashboard</h1>
+        <p class="page-description">SprintDesk project overview</p>
+      </div>
+    </div>
     <TaskSummary :tasks="tasks" />
   </main>
 </template>

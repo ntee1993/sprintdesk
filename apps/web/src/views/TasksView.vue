@@ -1,6 +1,12 @@
 <template>
-  <main>
-    <h1>SprintDesk — Project Management</h1>
+  <main id="main-content" tabindex="-1" class="page tasks-page">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">YOUR WORKSPACE</p>
+        <h1>Tasks</h1>
+        <p class="page-description">Keep track of work across your projects.</p>
+      </div>
+    </div>
     <p v-if="projectStore.loading" role="status">Loading projects...</p>
     <p v-if="projectStore.error" role="alert">{{ projectStore.error }}</p>
     <p v-if="!projectStore.loading && !projectStore.error && projectStore.projects.length === 0">

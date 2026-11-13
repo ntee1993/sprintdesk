@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="task-card">
     <p>{{ task.title }} - {{ task.status }} - {{ task.priority }}</p>
     <p>
       Assignee:

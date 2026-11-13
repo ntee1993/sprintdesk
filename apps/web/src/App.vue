@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import LoginForm from '@/components/LoginForm.vue'
+import AppShell from '@/components/AppShell.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -21,26 +22,17 @@ async function handleSignOut() {
 </script>
 
 <template>
-  <p v-if="!auth.initialized">Loading...</p>
+  <div v-if="!auth.initialized" class="app-loading" role="status">
+    <span class="spinner" aria-hidden="true"></span> Loading your workspace...
+  </div>
   <LoginForm v-else-if="!auth.user" />
-  <template v-else>
-    <header>
-      <nav aria-label="Main navigation">
-        <RouterLink to="/">Dashboard</RouterLink>
-        <RouterLink to="/tasks">Tasks</RouterLink>
-        <RouterLink to="/projects">Projects</RouterLink>
-      </nav>
-      <button type="button" :disabled="auth.loading" @click="handleSignOut">Logout</button>
-      <p v-if="auth.error" role="alert">{{ auth.error }}</p>
-    </header>
-
+  <AppShell
+    v-else
+    :user="auth.user"
+    :loading="auth.loading"
+    :error="auth.error"
+    @logout="handleSignOut"
+  >
     <RouterView />
-  </template>
+  </AppShell>
 </template>
-
-<style scoped>
-nav {
-  display: flex;
-  gap: 16px;
-}
-</style>
