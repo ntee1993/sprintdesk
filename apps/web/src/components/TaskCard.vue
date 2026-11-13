@@ -1,14 +1,13 @@
 <template>
   <div>
-    <p>
-      {{ task.title }} - {{ task.status }} - {{ task.priority }}
-    </p>
+    <p>{{ task.title }} - {{ task.status }} - {{ task.priority }}</p>
     <p>
       Assignee:
       {{ task.assigneeId == null ? 'Unassigned' : (assigneeName ?? `User #${task.assigneeId}`) }}
     </p>
     <p v-if="expanded">Additional details are visible.</p>
 
+    <button type="button" @click="emit('details', task.id)">Details</button>
     <button type="button" @click="handleEdit">Edit</button>
     <button type="button" @click="handleDelete">Delete</button>
     <button type="button" @click="expandedToggle" :aria-expanded="expanded">
@@ -29,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   delete: [taskId: number]
   edit: [taskId: number]
+  details: [taskId: number]
 }>()
 
 function handleDelete() {

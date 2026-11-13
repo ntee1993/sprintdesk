@@ -13,8 +13,10 @@ export const useAuthStore = defineStore('auth', () => {
   const projects = useProjectStore()
   const tasks = useTaskStore()
   let authRequestId = 0
+  const sessionGeneration = ref(0)
 
   function applySession(nextUser: AuthUser | null) {
+    sessionGeneration.value++
     projects.clearProjects()
     tasks.clearTasks()
     user.value = nextUser
@@ -80,5 +82,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { user, loading, error, initialized, initialize, signIn, signOut }
+  return { user, loading, error, initialized, sessionGeneration, initialize, signIn, signOut }
 })

@@ -13,6 +13,7 @@
           {{ project.name }}
         </option>
       </select>
+      <TaskDetailsModal v-if="detailsTask" :task="detailsTask" @close="detailsTaskId = null" />
       <EditTaskModal
         v-if="selectedTask !== undefined"
         @close="closeEditTask"
@@ -73,6 +74,7 @@
             :key="task.id"
             :task="task"
             :assignee-name="getAssigneeName(task)"
+            @details="detailsTaskId = $event"
             @edit="handleEditTask"
             @delete="deleteTask"
           />
@@ -88,6 +90,7 @@
               :key="task.id"
               :task="task"
               :assignee-name="getAssigneeName(task)"
+              @details="detailsTaskId = $event"
               @edit="handleEditTask"
               @delete="deleteTask"
             />
@@ -101,6 +104,7 @@
               :key="task.id"
               :task="task"
               :assignee-name="getAssigneeName(task)"
+              @details="detailsTaskId = $event"
               @edit="handleEditTask"
               @delete="deleteTask"
             />
@@ -114,6 +118,7 @@
               :key="task.id"
               :task="task"
               :assignee-name="getAssigneeName(task)"
+              @details="detailsTaskId = $event"
               @edit="handleEditTask"
               @delete="deleteTask"
             />
@@ -171,6 +176,7 @@ import { getProjectMembers, type ProjectMember } from '@/services/projects-api'
 import TaskCard from '@/components/TaskCard.vue'
 import TaskSummary from '@/components/TaskSummary.vue'
 import EditTaskModal from '@/components/EditTaskModal.vue'
+import TaskDetailsModal from '@/components/TaskDetailsModal.vue'
 import { useTaskFilters } from '@/composables/useTaskFilters.ts'
 import { useTaskStore } from '@/stores/task.ts'
 import { useProjectStore } from '@/stores/project'
@@ -180,6 +186,7 @@ const taskStore = useTaskStore()
 const projectStore = useProjectStore()
 const { tasks, isLoading, fetchError } = storeToRefs(taskStore)
 const selectedProjectId = ref<number | null>(null)
+const detailsTaskId = ref<number | null>(null)
 const tasksReady = ref(false)
 const selectedAssigneeId = ref<number | null>(null)
 const members = ref<ProjectMember[]>([])
@@ -204,6 +211,7 @@ watch(
   selectedProjectId,
   (projectId) => {
     const requestId = ++latestMembersRequestId
+    detailsTaskId.value = null
     selectedAssigneeId.value = null
     members.value = []
     membersError.value = null
@@ -258,6 +266,7 @@ const todoTasks = computed(() => tasks.value.filter((task) => task.status === 't
 const inProgressTasks = computed(() => tasks.value.filter((task) => task.status === 'in_progress'))
 const doneTasks = computed(() => tasks.value.filter((task) => task.status === 'done'))
 
+const detailsTask = computed(() => tasks.value.find((task) => task.id === detailsTaskId.value))
 const selectedTaskId = ref<number | null>(null)
 const selectedTask = computed(() => {
   if (selectedTaskId.value === null) {

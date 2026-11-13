@@ -173,6 +173,28 @@ describe('TasksView', () => {
     })
   })
 
+  it('opens task details and loads comments for the selected task', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(TasksView, {
+      global: { plugins: [pinia], stubs: { BaseModal: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+    useTaskStore(pinia).tasks = [
+      { id: 7, title: 'Task for comments', status: 'todo', priority: 'high' },
+    ]
+    await wrapper.vm.$nextTick()
+    await wrapper
+      .getComponent(TaskCard)
+      .findAll('button')
+      .find((button) => button.text() === 'Details')!
+      .trigger('click')
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledWith('http://localhost:3000/tasks/7/comments', {
+      credentials: 'include',
+    })
+    expect(wrapper.text()).toContain('No comments yet.')
+  })
+
   it('sends null when editing a task to be unassigned', async () => {
     const pinia = createPinia()
     const wrapper = mount(TasksView, {
@@ -184,7 +206,11 @@ describe('TasksView', () => {
     ]
     await wrapper.vm.$nextTick()
 
-    await wrapper.getComponent(TaskCard).get('button').trigger('click')
+    await wrapper
+      .getComponent(TaskCard)
+      .findAll('button')
+      .find((button) => button.text() === 'Edit')!
+      .trigger('click')
     const assigneeSelect = wrapper.get('#draft-assignee').element as HTMLSelectElement
     expect(assigneeSelect.value).toBe('2')
 
