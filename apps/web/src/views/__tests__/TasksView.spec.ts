@@ -14,6 +14,10 @@ function authenticatedPinia() {
   return pinia
 }
 
+vi.mock('@/services/csrf-fetch', () => ({
+  csrfFetch: (url: string, init: RequestInit) => fetch(url, init),
+}))
+
 describe('TasksView', () => {
   beforeEach(() => {
     vi.stubGlobal(

@@ -1,3 +1,4 @@
+import { csrfFetch } from './csrf-fetch'
 import { API_BASE_URL } from './api-config'
 
 export type AuthUser = {
@@ -38,10 +39,14 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 export async function logout(): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
-    method: 'POST',
-    credentials: 'include',
-  })
+  const response = await csrfFetch(
+    `${API_BASE_URL}/auth/logout`,
+    {
+      method: 'POST',
+      credentials: 'include',
+    },
+    true,
+  )
 
   if (!response.ok) {
     throw new Error(`Logout failed (HTTP ${response.status})`)

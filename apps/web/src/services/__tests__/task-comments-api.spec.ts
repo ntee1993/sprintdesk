@@ -6,6 +6,10 @@ import {
   updateTaskComment,
 } from '../task-comments-api'
 
+vi.mock('@/services/csrf-fetch', () => ({
+  csrfFetch: (url: string, init: RequestInit) => fetch(url, init),
+}))
+
 describe('task comments API', () => {
   afterEach(() => vi.unstubAllGlobals())
   it('sends authenticated GET, POST, PATCH and DELETE requests', async () => {

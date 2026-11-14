@@ -3,15 +3,19 @@ import {
   Controller,
   Get,
   HttpCode,
+  Header,
   HttpStatus,
   Post,
   Req,
   Res,
   UseGuards,
   UsePipes,
+  UnauthorizedException,
   ValidationPipe,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { csrfToken } from '../security/csrf.js';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard.js';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -36,19 +40,20 @@ export class AuthController {
   ) {}
 
   @Post('register')
+  @UseGuards(AuthRateLimitGuard)
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
+  @UseGuards(AuthRateLimitGuard)
   @HttpCode(HttpStatus.OK)
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { user, token, expiresAt } = await this.authService.loginWithSession(
-      dto,
-    );
+    const { user, token, expiresAt } =
+      await this.authService.loginWithSession(dto);
 
     res.cookie('sprintdesk_session', token, {
       httpOnly: true,
@@ -67,12 +72,20 @@ export class AuthController {
     return req.user;
   }
 
+  @Get('csrf')
+  @Header('Cache-Control', 'no-store')
+  @UseGuards(SessionAuthGuard)
+  csrf(@Req() req: Request) {
+    const cookies = req.cookies as Record<string, unknown>;
+    const session = cookies.sprintdesk_session;
+    if (typeof session !== 'string' || !session)
+      throw new UnauthorizedException('Unauthenticated');
+    return { token: csrfToken(session) };
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async logout(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const cookies = req.cookies as Record<string, unknown> | undefined;
     const token = cookies?.sprintdesk_session;
 

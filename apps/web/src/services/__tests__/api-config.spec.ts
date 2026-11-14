@@ -32,4 +32,11 @@ describe('API base URL configuration', () => {
     const { API_BASE_URL } = await import('../api-config')
     expect(API_BASE_URL).toBe('https://api.example.test')
   })
+  it('fails closed when production API URL is missing', async () => {
+    vi.stubEnv('PROD', true)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    await expect(import('../api-config')).rejects.toThrow(
+      'VITE_API_BASE_URL must be /api in production',
+    )
+  })
 })

@@ -1,3 +1,4 @@
+import { csrfFetch } from './csrf-fetch'
 import { API_BASE_URL } from './api-config'
 
 export type TaskComment = {
@@ -24,7 +25,7 @@ export async function getTaskComments(taskId: number): Promise<TaskComment[]> {
 
 export async function createTaskComment(taskId: number, content: string): Promise<TaskComment> {
   const response = await checked(
-    await fetch(endpoint(taskId), {
+    await csrfFetch(endpoint(taskId), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -40,7 +41,7 @@ export async function updateTaskComment(
   content: string,
 ): Promise<TaskComment> {
   const response = await checked(
-    await fetch(`${endpoint(taskId)}/${commentId}`, {
+    await csrfFetch(`${endpoint(taskId)}/${commentId}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -52,6 +53,9 @@ export async function updateTaskComment(
 
 export async function deleteTaskComment(taskId: number, commentId: number): Promise<void> {
   await checked(
-    await fetch(`${endpoint(taskId)}/${commentId}`, { method: 'DELETE', credentials: 'include' }),
+    await csrfFetch(`${endpoint(taskId)}/${commentId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }),
   )
 }

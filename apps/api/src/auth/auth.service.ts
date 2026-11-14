@@ -10,6 +10,10 @@ import { SessionService } from './session.service.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 
+// Public test value, not an account credential. Match the current Argon2id policy.
+const DUMMY_PASSWORD_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$ujHHtyJFrAO//bg/hJ0RBA$Lvx95vf4XWdjPLRI1L7ExJ+I4XQ9aLAWxJnDQjOEPro';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -56,16 +60,14 @@ export class AuthService {
       },
     });
 
-    if (user === null || user.passwordHash === null) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
+    // Unknown and legacy users still perform Argon2 verification; never accept
+    // the dummy hash as a credential for an absent account.
     const isPasswordValid = await verifyPassword(
-      user.passwordHash,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
       dto.password,
     );
 
-    if (!isPasswordValid) {
+    if (user === null || user.passwordHash === null || !isPasswordValid) {
       throw new UnauthorizedException('Invalid email or password');
     }
 

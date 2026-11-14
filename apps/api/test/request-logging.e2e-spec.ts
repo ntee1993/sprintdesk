@@ -23,6 +23,7 @@ import {
 import { AppModule } from '../src/app.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { RequestLoggingMiddleware } from '../src/logging/request-logging.middleware.js';
+import { SecurityHeadersMiddleware } from '../src/security/security-headers.middleware.js';
 
 @Controller('logging-test')
 class LoggingTestController {
@@ -33,7 +34,9 @@ class LoggingTestController {
 
   @Get('failure/trigger')
   fail() {
-    throw new Error('simulated unexpected failure');
+    throw new Error(
+      'simulated unexpected failure password-secret cookie-secret csrf-secret token-secret',
+    );
   }
 
   @Get('stream/hold')
@@ -65,7 +68,7 @@ describe('HTTP request logging', () => {
       if (typeof args[0] !== 'string') return [];
       try {
         const value = JSON.parse(args[0]) as LogEntry;
-        return value.requestId ? [value] : [];
+        return value.requestId && value.statusCode !== undefined ? [value] : [];
       } catch {
         return [];
       }
@@ -145,6 +148,22 @@ describe('HTTP request logging', () => {
     expect(entries(errorSpy)).toHaveLength(0);
   });
 
+  it.each([
+    '/health',
+    '/auth/me',
+    '/not-a-route',
+    '/logging-test/failure/trigger',
+  ])('sets security headers for %s', async (path) => {
+    const response = await request(app.getHttpServer()).get(path);
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['referrer-policy']).toBe('no-referrer');
+    expect(response.headers['x-frame-options']).toBe('DENY');
+    expect(response.headers['content-security-policy']).toBe(
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+    );
+    expect(response.headers['strict-transport-security']).toBeUndefined();
+  });
+
   it('generates distinct IDs for separate requests', async () => {
     const first = await request(app.getHttpServer()).get('/health').expect(200);
     const second = await request(app.getHttpServer())
@@ -166,6 +185,8 @@ describe('HTTP request logging', () => {
     const bootstrapApp = fixture.createNestApplication();
     const middleware = new RequestLoggingMiddleware();
     bootstrapApp.use(middleware.use.bind(middleware));
+    const headers = new SecurityHeadersMiddleware();
+    bootstrapApp.use(headers.use.bind(headers));
     bootstrapApp.enableCors({
       origin: 'http://localhost:5173',
       credentials: true,
@@ -177,6 +198,8 @@ describe('HTTP request logging', () => {
         .set('Origin', 'http://localhost:5173')
         .set('Access-Control-Request-Method', 'POST')
         .expect(204);
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['x-frame-options']).toBe('DENY');
       expect(entries(logSpy)).toHaveLength(1);
       assertEntry(
         entries(logSpy)[0],
@@ -200,6 +223,7 @@ describe('HTTP request logging', () => {
   it('logs validation failures without request body or query secrets', async () => {
     const response = await request(app.getHttpServer())
       .post('/auth/login?token=query-secret')
+      .set('Origin', 'http://localhost:5173')
       .set('Cookie', 'sprintdesk_session=cookie-secret')
       .send({ email: 'invalid', password: 'password-secret' })
       .expect(400);
@@ -260,6 +284,16 @@ describe('HTTP request logging', () => {
       response.headers['x-request-id'],
     );
     expect(JSON.stringify(logs)).not.toContain('simulated unexpected failure');
+    const allErrors = JSON.stringify(errorSpy.mock.calls);
+    expect(allErrors).not.toMatch(
+      /password-secret|cookie-secret|csrf-secret|token-secret|simulated unexpected failure/,
+    );
+    expect(allErrors).toContain('unexpected_error');
+    expect(allErrors).toContain(response.headers['x-request-id']);
+    expect(response.body).toEqual({
+      statusCode: 500,
+      message: 'Internal server error',
+    });
   });
 
   it('logs an interrupted connection once without a success status', async () => {

@@ -1,3 +1,4 @@
+import { csrfToken } from '../src/security/csrf.js';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -65,6 +66,7 @@ describe('Registration Integration', () => {
     try {
       const response = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
         .send({
           name: 'Integration Tester',
           email,
@@ -121,6 +123,7 @@ describe('Registration Integration', () => {
     try {
       await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
         .send({
           name: 'First User',
           email,
@@ -130,6 +133,7 @@ describe('Registration Integration', () => {
 
       const response = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
         .send({
           name: 'Second User',
           email,
@@ -183,6 +187,7 @@ describe('Registration Integration', () => {
     try {
       const registration = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
         .send({
           name: 'Login Tester',
           email,
@@ -192,6 +197,7 @@ describe('Registration Integration', () => {
 
       const login = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
         .send({ email, password })
         .expect(200);
 
@@ -218,6 +224,7 @@ describe('Registration Integration', () => {
 
     const response = await request(app.getHttpServer())
       .post('/auth/login')
+      .set('Origin', 'http://localhost:5173')
       .send({
         email,
         password: 'MySecurePassword123!',
@@ -238,6 +245,7 @@ describe('Registration Integration', () => {
     try {
       await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
         .send({
           name: 'Password Test User',
           email,
@@ -247,6 +255,7 @@ describe('Registration Integration', () => {
 
       const response = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
         .send({
           email,
           password: 'WrongPassword123!',
@@ -278,6 +287,7 @@ describe('Registration Integration', () => {
     try {
       const registration = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
         .send({
           name: 'Session Flow Tester',
           email,
@@ -287,6 +297,7 @@ describe('Registration Integration', () => {
 
       const loginResponse = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
         .send({ email, password })
         .expect(200);
 
@@ -321,7 +332,9 @@ describe('Registration Integration', () => {
 
       const logoutResponse = await request(app.getHttpServer())
         .post('/auth/logout')
+        .set('Origin', 'http://localhost:5173')
         .set('Cookie', sessionCookie)
+        .set('X-CSRF-Token', csrfToken(sessionCookie.split('=')[1]!))
         .expect(204);
 
       expect(logoutResponse.headers['set-cookie']?.[0]).toContain(
@@ -354,11 +367,13 @@ describe('Registration Integration', () => {
     try {
       const owner = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
         .send({ name: 'Project Owner', email: ownerEmail, password })
         .expect(201);
 
       await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
         .send({ name: 'Project Outsider', email: outsiderEmail, password })
         .expect(201);
 
@@ -381,6 +396,7 @@ describe('Registration Integration', () => {
 
       const login = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
         .send({ email: outsiderEmail, password })
         .expect(200);
       const setCookie = login.headers['set-cookie']?.[0];
@@ -398,7 +414,9 @@ describe('Registration Integration', () => {
 
       await request(app.getHttpServer())
         .patch(`/tasks/${task.id}`)
+        .set('Origin', 'http://localhost:5173')
         .set('Cookie', sessionCookie)
+        .set('X-CSRF-Token', csrfToken(sessionCookie.split('=')[1]!))
         .send({ status: 'done' })
         .expect(404);
 
