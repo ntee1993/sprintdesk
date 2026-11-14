@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '@/services/api-config'
 import type { Task, TaskChanges } from '@/types/task'
 import {
   createTask,
@@ -39,7 +40,7 @@ export const useTaskStore = defineStore('tasks', () => {
         query.set('limit', String(TASK_PAGE_SIZE))
         query.set('page', String(page))
 
-        const response = await fetch(`http://localhost:3000/tasks?${query}`, {
+        const response = await fetch(`${API_BASE_URL}/tasks?${query}`, {
           credentials: 'include',
         })
         if (requestId !== latestFetchId) return

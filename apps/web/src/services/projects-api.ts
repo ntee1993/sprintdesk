@@ -1,3 +1,5 @@
+import { API_BASE_URL } from './api-config'
+
 export type Project = {
   id: number
   name: string
@@ -12,7 +14,7 @@ export type ProjectMember = {
 }
 
 export async function getProjects(): Promise<Project[]> {
-  const response = await fetch('http://localhost:3000/projects', {
+  const response = await fetch(`${API_BASE_URL}/projects`, {
     credentials: 'include',
   })
 
@@ -24,7 +26,7 @@ export async function getProjects(): Promise<Project[]> {
 }
 
 export async function createProject(name: string): Promise<Project> {
-  const response = await fetch('http://localhost:3000/projects', {
+  const response = await fetch(`${API_BASE_URL}/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -39,7 +41,7 @@ export async function createProject(name: string): Promise<Project> {
 }
 
 export async function getProjectMembers(projectId: number): Promise<ProjectMember[]> {
-  const response = await fetch(`http://localhost:3000/projects/${projectId}/members`, {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/members`, {
     credentials: 'include',
   })
 
@@ -55,7 +57,7 @@ export async function addProjectMember(
   email: string,
   role: 'EDITOR' | 'VIEWER',
 ): Promise<void> {
-  const response = await fetch(`http://localhost:3000/projects/${projectId}/members`, {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/members`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -72,7 +74,7 @@ export async function updateProjectMemberRole(
   memberId: number,
   role: 'EDITOR' | 'VIEWER',
 ): Promise<void> {
-  const response = await fetch(`http://localhost:3000/projects/${projectId}/members/${memberId}`, {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/members/${memberId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -85,7 +87,7 @@ export async function updateProjectMemberRole(
 }
 
 export async function removeProjectMember(projectId: number, memberId: number): Promise<void> {
-  const response = await fetch(`http://localhost:3000/projects/${projectId}/members/${memberId}`, {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/members/${memberId}`, {
     method: 'DELETE',
     credentials: 'include',
   })

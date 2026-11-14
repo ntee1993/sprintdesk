@@ -1,3 +1,5 @@
+import { API_BASE_URL } from './api-config'
+
 import type { Task, TaskChanges, TaskStatus, TaskPriority } from '@/types/task'
 
 export async function createTask(input: {
@@ -7,7 +9,7 @@ export async function createTask(input: {
   projectId: number
   assigneeId?: number | null
 }): Promise<Task> {
-  const response = await fetch('http://localhost:3000/tasks', {
+  const response = await fetch(`${API_BASE_URL}/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -22,7 +24,7 @@ export async function createTask(input: {
 }
 
 export async function updateTask(taskId: number, changes: TaskChanges): Promise<Task> {
-  const response = await fetch(`http://localhost:3000/tasks/${taskId}`, {
+  const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -37,7 +39,7 @@ export async function updateTask(taskId: number, changes: TaskChanges): Promise<
 }
 
 export async function deleteTask(taskId: number): Promise<void> {
-  const response = await fetch(`http://localhost:3000/tasks/${taskId}`, {
+  const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
     method: 'DELETE',
     credentials: 'include',
   })

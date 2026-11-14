@@ -1,0 +1,87 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.19.0'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: '10.34.5'
+      - run: pnpm --dir apps/web install --frozen-lockfile
+      - run: pnpm --dir apps/web lint:check
+      - run: pnpm --dir apps/web test:unit
+      - run: pnpm --dir apps/web type-check
+      - run: pnpm --dir apps/web build
+  api:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:5433/sprintdesk_test
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.19.0'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: '10.34.5'
+      - run: pnpm --dir apps/api install --frozen-lockfile
+      - run: pnpm --dir apps/api exec prisma generate --config prisma7.config.ts
+      - run: pnpm --dir apps/api lint
+      - run: pnpm --dir apps/api test
+      - run: pnpm --dir apps/api test:e2e
+      - run: pnpm --dir apps/api build
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: sprintdesk_test
+            port: 5433
+            tests: test/database.integration-spec.ts test/register.integration-spec.ts
+          - database: sprintdesk_phase2_test
+            port: 55439
+            tests: test/concurrency.integration-spec.ts test/task-comments.integration-spec.ts
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: ${{ matrix.database }}
+        ports:
+          - ${{ matrix.port }}:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_user"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:${{ matrix.port }}/${{ matrix.database }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.19.0'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: '10.34.5'
+      - run: pnpm --dir apps/api install --frozen-lockfile
+      - run: pnpm --dir apps/api exec prisma generate --config prisma7.config.ts
+      - run: pnpm --dir apps/api exec prisma migrate deploy --config prisma7.config.ts
+      - run: pnpm --dir apps/api exec vitest run --config vitest.config.integration.ts ${{ matrix.tests }}
