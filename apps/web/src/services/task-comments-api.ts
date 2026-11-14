@@ -1,3 +1,5 @@
+import { API_BASE_URL } from './api-config'
+
 export type TaskComment = {
   id: number
   taskId: number
@@ -8,7 +10,7 @@ export type TaskComment = {
   author: { id: number; name: string }
 }
 
-const endpoint = (taskId: number) => `http://localhost:3000/tasks/${taskId}/comments`
+const endpoint = (taskId: number) => `${API_BASE_URL}/tasks/${taskId}/comments`
 
 async function checked(response: Response): Promise<Response> {
   if (!response.ok) throw new Error(`Comments request failed (HTTP ${response.status})`)

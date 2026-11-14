@@ -1,3 +1,5 @@
+import { API_BASE_URL } from './api-config'
+
 export type AuthUser = {
   id: number
   name: string
@@ -5,7 +7,7 @@ export type AuthUser = {
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {
-  const response = await fetch('http://localhost:3000/auth/login', {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -20,7 +22,7 @@ export async function login(email: string, password: string): Promise<AuthUser> 
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  const response = await fetch('http://localhost:3000/auth/me', {
+  const response = await fetch(`${API_BASE_URL}/auth/me`, {
     credentials: 'include',
   })
 
@@ -36,7 +38,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 export async function logout(): Promise<void> {
-  const response = await fetch('http://localhost:3000/auth/logout', {
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
     method: 'POST',
     credentials: 'include',
   })

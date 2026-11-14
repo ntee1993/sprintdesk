@@ -13,7 +13,8 @@
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli src/",
+    "lint:check": "oxlint . && eslint ."
   },
   "dependencies": {
     "pinia": "^4.1.0",
@@ -44,6 +45,7 @@
     "vue-tsc": "^3.3.11"
   },
   "engines": {
-    "node": "^22.18.0 || >=24.12.0"
-  }
+    "node": "24.19.0"
+  },
+  "packageManager": "pnpm@10.34.5"
 }
