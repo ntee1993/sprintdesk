@@ -1,3 +1,4 @@
+import { csrfToken } from '../src/security/csrf.js';
 import { Test } from '@nestjs/testing';
 import type { TestingModule } from '@nestjs/testing';
 import {
@@ -335,6 +336,8 @@ describe('App (e2e)', () => {
     it('creates a project using the owner ID from the session', async () => {
       const response = await request(app.getHttpServer())
         .post('/projects')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ name: 'My First Project' })
         .expect(201);
@@ -352,6 +355,8 @@ describe('App (e2e)', () => {
     it('rejects an owner ID supplied in the request body', async () => {
       await request(app.getHttpServer())
         .post('/projects')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ name: 'My First Project', ownerId: 99 })
         .expect(400);
@@ -377,6 +382,8 @@ describe('App (e2e)', () => {
       await request(app.getHttpServer()).get('/projects').expect(401);
       await request(app.getHttpServer())
         .post('/projects')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send({ name: 'My First Project' })
         .expect(401);
 
@@ -476,6 +483,8 @@ describe('App (e2e)', () => {
     it('allows an owner to add an editor', async () => {
       const response = await request(app.getHttpServer())
         .post('/projects/1/members')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(input)
         .expect(201);
@@ -500,6 +509,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/projects/1/members')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(input)
         .expect(403);
@@ -513,6 +524,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/projects/1/members')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(input)
         .expect(404);
@@ -530,6 +543,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/projects/1/members')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(input)
         .expect(409);
@@ -538,6 +553,8 @@ describe('App (e2e)', () => {
     it('rejects requests without a session', async () => {
       await request(app.getHttpServer())
         .post('/projects/1/members')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send(input)
         .expect(401);
 
@@ -550,6 +567,8 @@ describe('App (e2e)', () => {
       for (const projectId of ['abc', '0', '-1']) {
         await request(app.getHttpServer())
           .post(`/projects/${projectId}/members`)
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send(input)
           .expect(400);
@@ -562,6 +581,8 @@ describe('App (e2e)', () => {
       ]) {
         await request(app.getHttpServer())
           .post('/projects/1/members')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send(body)
           .expect(400);
@@ -581,6 +602,8 @@ describe('App (e2e)', () => {
     it('allows the owner to update a member role', async () => {
       const response = await request(app.getHttpServer())
         .patch('/projects/1/members/2')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ role: 'EDITOR' })
         .expect(200);
@@ -604,12 +627,16 @@ describe('App (e2e)', () => {
       getProjectRoleMock.mockResolvedValueOnce('EDITOR');
       await request(app.getHttpServer())
         .patch('/projects/1/members/2')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ role: 'VIEWER' })
         .expect(403);
 
       await request(app.getHttpServer())
         .patch('/projects/1/members/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ role: 'VIEWER' })
         .expect(403);
@@ -627,6 +654,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .patch('/projects/1/members/999')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ role: 'VIEWER' })
         .expect(404);
@@ -635,6 +664,8 @@ describe('App (e2e)', () => {
     it('rejects an invalid role', async () => {
       await request(app.getHttpServer())
         .patch('/projects/1/members/2')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ role: 'OWNER' })
         .expect(400);
@@ -651,6 +682,8 @@ describe('App (e2e)', () => {
     it('allows an owner to remove an editor', async () => {
       const response = await request(app.getHttpServer())
         .delete('/projects/1/members/2')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
@@ -678,6 +711,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .delete('/projects/1/members/2')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(403);
 
@@ -687,6 +722,8 @@ describe('App (e2e)', () => {
     it('rejects an owner attempting to remove themselves', async () => {
       await request(app.getHttpServer())
         .delete('/projects/1/members/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(403);
 
@@ -703,6 +740,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .delete('/projects/1/members/999')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(404);
 
@@ -726,6 +765,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .delete('/projects/1/members/2')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
@@ -754,6 +795,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .delete('/projects/1/members/2')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
@@ -1204,6 +1247,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(validTaskInput)
         .expect(403);
@@ -1226,6 +1271,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(validTaskInput)
         .expect(201);
@@ -1247,6 +1294,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(input)
         .expect(201);
@@ -1268,6 +1317,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(input)
         .expect(400);
@@ -1285,6 +1336,8 @@ describe('App (e2e)', () => {
     it('creates an unassigned task when assigneeId is omitted', async () => {
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(validTaskInput)
         .expect(201);
@@ -1314,6 +1367,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(assignedTaskInput)
         .expect(201);
@@ -1337,6 +1392,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(input)
         .expect(201);
@@ -1349,6 +1406,8 @@ describe('App (e2e)', () => {
     it('rejects unauthenticated requests', async () => {
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send(validTaskInput)
         .expect(401);
 
@@ -1362,6 +1421,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(validTaskInput)
         .expect(403);
@@ -1375,6 +1436,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/tasks')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send(validTaskInput)
         .expect(403);
@@ -1394,6 +1457,8 @@ describe('App (e2e)', () => {
 
         const response = await request(app.getHttpServer())
           .post('/tasks')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send(invalidInput)
           .expect(400);
@@ -1411,6 +1476,8 @@ describe('App (e2e)', () => {
 
         const response = await request(app.getHttpServer())
           .post('/tasks')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send(unexpectedInput)
           .expect(400);
@@ -1431,6 +1498,8 @@ describe('App (e2e)', () => {
 
         await request(app.getHttpServer())
           .post('/tasks')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send(input)
           .expect(400);
@@ -1446,6 +1515,8 @@ describe('App (e2e)', () => {
 
         await request(app.getHttpServer())
           .post('/tasks')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send(input)
           .expect(400);
@@ -1461,6 +1532,8 @@ describe('App (e2e)', () => {
         findProjectMembersMock.mockResolvedValueOnce(null);
         const response = await request(app.getHttpServer())
           .post('/tasks')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send(input)
           .expect(400);
@@ -1499,6 +1572,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send(body)
         .expect(201);
 
@@ -1520,6 +1595,8 @@ describe('App (e2e)', () => {
     it('rejects an invalid email', async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send({
           ...validRegisterInput,
           email: 'invalid-email',
@@ -1533,6 +1610,8 @@ describe('App (e2e)', () => {
     it('rejects a password shorter than 12 characters', async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send({
           ...validRegisterInput,
           password: '12345',
@@ -1546,6 +1625,8 @@ describe('App (e2e)', () => {
     it('rejects an unexpected field', async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send({
           ...validRegisterInput,
           role: 'admin',
@@ -1563,6 +1644,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/auth/register')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send(validRegisterInput)
         .expect(409);
 
@@ -1594,6 +1677,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send(body)
         .expect(200);
 
@@ -1616,6 +1701,8 @@ describe('App (e2e)', () => {
     it('rejects an invalid login email', async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send({
           email: 'invalid-email',
           password: 'MySecurePassword123!',
@@ -1630,6 +1717,8 @@ describe('App (e2e)', () => {
     it('rejects an empty password', async () => {
       const response = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send({
           email: 'tester@example.test',
           password: '',
@@ -1653,6 +1742,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send(credentials)
         .expect(401);
 
@@ -1673,6 +1764,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .send(credentials)
         .expect(401);
 
@@ -1740,7 +1833,10 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/auth/logout')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', 'sprintdesk_session=test-session-token')
+        .set('X-CSRF-Token', csrfToken('test-session-token'))
         .expect(204);
 
       expect(revokeSessionMock).toHaveBeenCalledExactlyOnceWith(
@@ -1763,6 +1859,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ assigneeId: 2 })
         .expect(200);
@@ -1783,6 +1881,8 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ assigneeId: 99 })
         .expect(400);
@@ -1802,6 +1902,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ assigneeId: null })
         .expect(200);
@@ -1814,6 +1916,8 @@ describe('App (e2e)', () => {
     it('updates a task successfully', async () => {
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ status: 'done' })
         .expect(200);
@@ -1829,6 +1933,8 @@ describe('App (e2e)', () => {
       updateMock.mockResolvedValueOnce([{ ...mockTasks[0], assigneeId: 1 }]);
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ assigneeId: 1 })
         .expect(200);
@@ -1844,6 +1950,8 @@ describe('App (e2e)', () => {
       updateMock.mockResolvedValueOnce([{ ...mockTasks[0], assigneeId: null }]);
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ assigneeId: null })
         .expect(200);
@@ -1860,6 +1968,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ status: 'done' })
         .expect(403);
@@ -1877,6 +1987,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .send({ status: 'done' })
         .expect(404);
@@ -1889,6 +2001,8 @@ describe('App (e2e)', () => {
       it('rejects invalid value', async () => {
         await request(app.getHttpServer())
           .patch('/tasks/1')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send({ status: 'invalid' })
           .expect(400);
@@ -1899,6 +2013,8 @@ describe('App (e2e)', () => {
       it('rejects non-white-listed field', async () => {
         await request(app.getHttpServer())
           .patch('/tasks/1')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send({ projectId: 1 })
           .expect(400);
@@ -1909,6 +2025,8 @@ describe('App (e2e)', () => {
       it('rejects invalid task ID', async () => {
         await request(app.getHttpServer())
           .patch('/tasks/hello')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send({ status: 'done' })
           .expect(400);
@@ -1919,6 +2037,8 @@ describe('App (e2e)', () => {
       it('rejects non-exist task ID', async () => {
         const response = await request(app.getHttpServer())
           .patch('/tasks/999')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send({ status: 'done' })
           .expect(404);
@@ -1930,6 +2050,8 @@ describe('App (e2e)', () => {
       it('rejects non-exist assignee ID', async () => {
         const response = await request(app.getHttpServer())
           .patch('/tasks/3')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .send({ assigneeId: 999999 })
           .expect(404);
@@ -1948,6 +2070,8 @@ describe('App (e2e)', () => {
     it('deletes a task successfully', async () => {
       const response = await request(app.getHttpServer())
         .delete('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(200);
 
@@ -1962,6 +2086,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(403);
 
@@ -1978,6 +2104,8 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete('/tasks/1')
+        .set('Origin', 'http://localhost:5173')
+        .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
         .set('Cookie', authenticatedSessionCookie)
         .expect(404);
 
@@ -1989,6 +2117,8 @@ describe('App (e2e)', () => {
       it('rejects non-exist task ID', async () => {
         const response = await request(app.getHttpServer())
           .delete('/tasks/999')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .expect(404);
 
@@ -1999,6 +2129,8 @@ describe('App (e2e)', () => {
       it('rejects invalid task ID', async () => {
         await request(app.getHttpServer())
           .delete('/tasks/abc')
+          .set('Origin', 'http://localhost:5173')
+          .set('X-CSRF-Token', csrfToken('authenticated-session-token'))
           .set('Cookie', authenticatedSessionCookie)
           .expect(400);
 

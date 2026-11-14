@@ -29,4 +29,15 @@ describe('CORS origin configuration', () => {
       'CORS_ORIGIN must be a single valid HTTP(S) origin',
     );
   });
+  it('requires an explicit HTTPS origin in production', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CORS_ORIGIN', undefined);
+    expect(() => getCorsOrigin()).toThrow(
+      'CORS_ORIGIN is required in production',
+    );
+    expect(() => getCorsOrigin('http://localhost:5173')).toThrow();
+    expect(getCorsOrigin('https://app.example.test')).toBe(
+      'https://app.example.test',
+    );
+  });
 });

@@ -4,6 +4,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuthService } from './auth.service.js';
 import { hashPassword, verifyPassword } from './password.js';
+import * as passwordModule from './password.js';
 import { SessionService } from './session.service.js';
 
 describe('AuthService', () => {
@@ -146,6 +147,29 @@ describe('AuthService', () => {
     await expect(login).rejects.toThrow(UnauthorizedException);
     await expect(login).rejects.toThrow('Invalid email or password');
   });
+
+  it.each([
+    null,
+    { id: 1, name: 'Legacy', email: 'legacy@example.test', passwordHash: null },
+  ])(
+    'performs dummy verification and rejects absent or legacy accounts',
+    async (user) => {
+      findUniqueMock.mockResolvedValue(user);
+      const spy = vi.spyOn(passwordModule, 'verifyPassword');
+      try {
+        await expect(
+          authService.login({
+            email: 'unknown@example.test',
+            password: 'sprintdesk-dummy-verification-only',
+          }),
+        ).rejects.toThrow(UnauthorizedException);
+        expect(spy).toHaveBeenCalledOnce();
+        expect(spy.mock.calls[0][0]).toMatch(/^\$argon2id\$/);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
 
   it('rejects an incorrect password', async () => {
     const passwordHash = await hashPassword('CorrectPassword123!');

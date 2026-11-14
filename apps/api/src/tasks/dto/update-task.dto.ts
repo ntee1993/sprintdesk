@@ -1,3 +1,4 @@
+import { MaxLength } from 'class-validator';
 import {
   IsIn,
   IsInt,
@@ -11,6 +12,7 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200)
   title?: string;
 
   @IsOptional()

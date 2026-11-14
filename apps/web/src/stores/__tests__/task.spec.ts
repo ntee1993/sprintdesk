@@ -3,6 +3,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useTaskStore } from '../task'
 import type { Task } from '../../types/task'
 
+vi.mock('@/services/csrf-fetch', () => ({
+  csrfFetch: (url: string, init: RequestInit) => fetch(url, init),
+}))
+
 describe('Task Store - fetchTasks', () => {
   beforeEach(() => {
     setActivePinia(createPinia())

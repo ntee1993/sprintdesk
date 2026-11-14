@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getCurrentUser, login, logout, type AuthUser } from '@/services/auth-api'
+import { invalidateSessionGeneration } from '@/services/session-generation'
 import { useProjectStore } from './project'
 import { useTaskStore } from './task'
 
@@ -16,6 +17,7 @@ export const useAuthStore = defineStore('auth', () => {
   const sessionGeneration = ref(0)
 
   function applySession(nextUser: AuthUser | null) {
+    invalidateSessionGeneration()
     sessionGeneration.value++
     projects.clearProjects()
     tasks.clearTasks()

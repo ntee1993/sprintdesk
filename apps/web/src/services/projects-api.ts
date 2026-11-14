@@ -1,3 +1,4 @@
+import { csrfFetch } from './csrf-fetch'
 import { API_BASE_URL } from './api-config'
 
 export type Project = {
@@ -26,7 +27,7 @@ export async function getProjects(): Promise<Project[]> {
 }
 
 export async function createProject(name: string): Promise<Project> {
-  const response = await fetch(`${API_BASE_URL}/projects`, {
+  const response = await csrfFetch(`${API_BASE_URL}/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -57,7 +58,7 @@ export async function addProjectMember(
   email: string,
   role: 'EDITOR' | 'VIEWER',
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/members`, {
+  const response = await csrfFetch(`${API_BASE_URL}/projects/${projectId}/members`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -74,7 +75,7 @@ export async function updateProjectMemberRole(
   memberId: number,
   role: 'EDITOR' | 'VIEWER',
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/members/${memberId}`, {
+  const response = await csrfFetch(`${API_BASE_URL}/projects/${projectId}/members/${memberId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -87,7 +88,7 @@ export async function updateProjectMemberRole(
 }
 
 export async function removeProjectMember(projectId: number, memberId: number): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/members/${memberId}`, {
+  const response = await csrfFetch(`${API_BASE_URL}/projects/${projectId}/members/${memberId}`, {
     method: 'DELETE',
     credentials: 'include',
   })

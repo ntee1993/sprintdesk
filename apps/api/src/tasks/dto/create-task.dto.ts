@@ -1,3 +1,4 @@
+import { MaxLength } from 'class-validator';
 import {
   IsIn,
   IsInt,
@@ -10,6 +11,7 @@ import {
 export class CreateTaskDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200)
   title!: string;
 
   @IsIn(['todo', 'in_progress', 'done'])
