@@ -1,6 +1,6 @@
 # SprintDesk
 
-SprintDesk is a learning and portfolio project for organizing work across shared projects. It combines a Vue frontend, a NestJS API, and PostgreSQL, with role-based project access and task collaboration.
+SprintDesk is a full-stack project management application for organizing collaborative work. It combines a Vue frontend, a NestJS API, and PostgreSQL, with role-based project access and task collaboration.
 
 **Live demo:** [Open SprintDesk](https://web-production-5e9614d8.up.railway.app) · [Architecture](docs/architecture.md) · [Operations runbook](docs/operations/railway.md) · [Portfolio and interview notes](docs/portfolio.md)
 
