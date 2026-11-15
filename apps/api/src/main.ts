@@ -7,6 +7,7 @@ import { RequestLoggingMiddleware } from './logging/request-logging.middleware.j
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const requestLogging = new RequestLoggingMiddleware();
   app.use(requestLogging.use.bind(requestLogging));
   const securityHeaders = new SecurityHeadersMiddleware();
