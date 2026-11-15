@@ -4,11 +4,11 @@ SprintDesk is a learning and portfolio project for organizing work across shared
 
 **Live demo:** [Open SprintDesk](https://web-production-5e9614d8.up.railway.app) · [Architecture](docs/architecture.md) · [Operations runbook](docs/operations/railway.md) · [Portfolio and interview notes](docs/portfolio.md)
 
-Availability and free-tier capacity can vary. The web UI has a sign-in form but no registration screen; creating an account currently requires the registration API. There is no published shared demo account. Use only disposable, non-sensitive data.
+Availability and free-tier capacity can vary. Choose **Create account** on the sign-in screen, register with a disposable email and password, then sign in. There is no published shared demo account. Use only disposable, non-sensitive data.
 
 ## Features
 
-- Register through the API; sign in, restore a session, and sign out through the UI.
+- Register, sign in, restore a session, and sign out through the UI.
 - Create projects and manage registered members as owner, editor, or viewer.
 - Create, assign, search, filter, edit, and delete tasks; switch between list and Kanban views.
 - View task details and collaborate through comments. Viewers can comment; only the author can edit or delete their comments.
@@ -78,16 +78,7 @@ pnpm --dir apps/web dev
 
 By default, open `http://localhost:5173`; the API listens on port 3000. For configuration and deployment details, see [API environment examples](apps/api/.env.example), [web environment examples](apps/web/.env.example), and the [operations runbook](docs/operations/railway.md).
 
-To create a disposable **local** account, call the registration API with the trusted local frontend origin. Replace the example email and password; the password must be at least 12 characters. Avoid entering real credentials into shell history.
-
-```sh
-curl -X POST http://localhost:3000/auth/register \
-  -H 'Origin: http://localhost:5173' \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Demo User","email":"demo@example.test","password":"ReplaceWithDisposablePassword123!"}'
-```
-
-Then sign in through the web UI. The deployed API is available at `/api/auth/register` on the public origin and also requires its exact trusted `Origin` or `Referer`.
+To create a local account, select **Create account** in the web UI. Enter a name, email and password of at least 12 characters; after registration, sign in with those credentials. The registration endpoint does not create a session.
 
 ### Environment variables
 
@@ -127,7 +118,7 @@ GitHub Actions runs frontend and API checks and PostgreSQL-backed integration jo
 ## Known limitations and future work
 
 - The in-memory authentication limiter is per API instance. Behind proxies, multiple users may share a socket-address bucket; a verified trusted-proxy design is needed before relying on client IPs.
-- The UI has no registration form or published demo account; an evaluator must register through the API or receive a separately provisioned disposable account.
+- There is no published shared demo account; evaluators must register using disposable credentials.
 - Task pages are fetched sequentially until the selected project's tasks are loaded. Project and comment lists are not paginated.
 - `/health` reports API liveness, not PostgreSQL readiness. Backups and restoration must be verified for the chosen hosting plan.
 - Browser CSP verification after deployment and Railway resource/credit limits require operational checks.

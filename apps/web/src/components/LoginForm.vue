@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+defineProps<{ registrationComplete?: boolean }>()
+defineEmits<{ 'create-account': [] }>()
+const heading = ref<HTMLElement | null>(null)
+onMounted(() => heading.value?.focus())
 const email = ref('')
 const password = ref('')
 
@@ -23,11 +27,12 @@ async function handleSubmit() {
       </div>
       <div class="login-intro">
         <span class="login-eyebrow">YOUR WORKSPACE, SIMPLIFIED</span>
-        <h1>Welcome back.</h1>
+        <h1 ref="heading" tabindex="-1">Welcome back.</h1>
         <p>Sign in to pick up where you left off.</p>
       </div>
       <form @submit.prevent="handleSubmit">
         <h2>Sign in</h2>
+        <p v-if="registrationComplete" role="status">Account created. Please sign in.</p>
         <label for="email">Email</label>
         <input id="email" v-model="email" type="email" autocomplete="email" required />
 
@@ -43,6 +48,7 @@ async function handleSubmit() {
         <p v-if="auth.error" role="alert">{{ auth.error }}</p>
         <button type="submit" :disabled="auth.loading">Login</button>
       </form>
+      <p><a href="#" @click.prevent="$emit('create-account')">Create account</a></p>
     </div>
   </main>
 </template>

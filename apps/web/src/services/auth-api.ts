@@ -7,6 +7,20 @@ export type AuthUser = {
   email: string
 }
 
+export async function register(name: string, email: string, password: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ name, email, password }),
+  })
+
+  if (response.status === 409) throw new Error('This email is already registered.')
+  if (response.status === 400) throw new Error('Check your name, email and password and try again.')
+  if (response.status === 429) throw new Error('Too many attempts. Please try again later.')
+  if (!response.ok) throw new Error('Could not create account. Please try again.')
+}
+
 export async function login(email: string, password: string): Promise<AuthUser> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
