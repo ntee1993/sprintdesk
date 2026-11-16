@@ -18,7 +18,15 @@ Project permissions are enforced by the API; the UI also hides actions that are 
 
 ## Screenshots
 
-No screenshots are currently included in the repository. To add them, capture the dashboard, projects/member management, and task board using disposable data; remove personal information, browser details, and tokens before committing. Link the reviewed images from this section.
+Screenshots show a sample project and task using disposable demo data.
+
+**Projects and members**
+
+![Projects and member management](docs/screenshots/projects.jpg)
+
+**Kanban task board**
+
+![Kanban board with a sample task](docs/screenshots/kanban.jpg)
 
 ## Tech stack and architecture
 
